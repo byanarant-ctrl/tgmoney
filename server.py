@@ -51,12 +51,14 @@ class KickPayload(InitPayload):
 def _verify_init_data(init_data: str) -> dict:
     if not BOT_TOKEN:
         raise HTTPException(status_code=500, detail="Missing TELEGRAM_API_KEY")
-    data = dict(parse_qsl(init_data, strict_parsing=True))
+    data = dict(parse_qsl(init_data, strict_parsing=True, keep_blank_values=True))
     received_hash = data.pop("hash", None)
     if not received_hash:
         raise HTTPException(status_code=401, detail="Missing hash")
     data_check = "\n".join(f"{k}={data[k]}" for k in sorted(data))
-    secret_key = hashlib.sha256(BOT_TOKEN.encode()).digest()
+    secret_key = hmac.new(
+        b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256
+    ).digest()
     computed_hash = hmac.new(secret_key, data_check.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(computed_hash, received_hash):
         raise HTTPException(status_code=401, detail="Invalid hash")

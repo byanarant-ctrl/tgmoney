@@ -1,4 +1,4 @@
-const API_BASE = window.API_BASE || "https://YOUR-RENDER-APP.onrender.com";
+const API_BASE = window.API_BASE || "https://tgmoney.onrender.com";
 const tg = window.Telegram ? window.Telegram.WebApp : null;
 
 const panels = {

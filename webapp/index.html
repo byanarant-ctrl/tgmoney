@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Budget Mini App</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  </head>
+  <body>
+    <div class="bg"></div>
+    <main class="app">
+      <header class="top">
+        <div class="title">
+          <span>Общий бюджет</span>
+          <strong id="balance">0.00</strong>
+        </div>
+        <div class="subtitle">Разница между доходами и расходами</div>
+      </header>
+
+      <section class="menu">
+        <button class="card" data-target="income">
+          <span class="card-title">Доходы</span>
+          <span class="card-sub">Добавить или посмотреть статистику</span>
+        </button>
+        <button class="card" data-target="expense">
+          <span class="card-title">Расходы</span>
+          <span class="card-sub">Контроль затрат по периодам</span>
+        </button>
+        <button class="card" data-target="plans">
+          <span class="card-title">Планы</span>
+          <span class="card-sub">Скоро появится</span>
+        </button>
+        <button class="card" data-target="invite">
+          <span class="card-title">Пригласить</span>
+          <span class="card-sub">Объединить бюджет</span>
+        </button>
+      </section>
+
+      <section class="panel hidden" id="panel-income">
+        <h2>Доходы</h2>
+        <div class="form">
+          <input id="income-amount" type="number" min="0" step="0.01" placeholder="Сумма" />
+          <input id="income-desc" type="text" maxlength="120" placeholder="Описание" />
+          <button id="income-add">Добавить доход</button>
+        </div>
+        <div class="quick">
+          <button data-summary="income:week">Неделя</button>
+          <button data-summary="income:month">Месяц</button>
+          <button data-summary="income:year">Год</button>
+        </div>
+        <div class="result" id="income-result"></div>
+        <button class="back">Назад</button>
+      </section>
+
+      <section class="panel hidden" id="panel-expense">
+        <h2>Расходы</h2>
+        <div class="form">
+          <input id="expense-amount" type="number" min="0" step="0.01" placeholder="Сумма" />
+          <input id="expense-desc" type="text" maxlength="120" placeholder="Описание" />
+          <button id="expense-add">Добавить расход</button>
+        </div>
+        <div class="quick">
+          <button data-summary="expense:week">Неделя</button>
+          <button data-summary="expense:month">Месяц</button>
+          <button data-summary="expense:year">Год</button>
+        </div>
+        <div class="result" id="expense-result"></div>
+        <button class="back">Назад</button>
+      </section>
+
+      <section class="panel hidden" id="panel-plans">
+        <h2>Планы</h2>
+        <p>Этот раздел в разработке.</p>
+        <button class="back">Назад</button>
+      </section>
+
+      <section class="panel hidden" id="panel-invite">
+        <h2>Пригласить</h2>
+        <div class="form">
+          <button id="invite-create">Создать код</button>
+          <div class="result" id="invite-code"></div>
+        </div>
+        <div class="form">
+          <input id="join-code" type="text" maxlength="16" placeholder="Код приглашения" />
+          <button id="join-submit">Присоединиться</button>
+        </div>
+        <div class="form">
+          <button id="leave-budget">Выйти из общего бюджета</button>
+        </div>
+        <div class="form hidden" id="kick-form">
+          <input id="kick-id" type="number" placeholder="Telegram ID" />
+          <button id="kick-submit">Удалить пользователя</button>
+        </div>
+        <div class="result" id="invite-result"></div>
+        <button class="back">Назад</button>
+      </section>
+
+      <section class="panel hidden" id="panel-error">
+        <h2>Ошибка</h2>
+        <p id="error-message"></p>
+      </section>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>

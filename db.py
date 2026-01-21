@@ -1,0 +1,250 @@
+import os
+import sqlite3
+from datetime import datetime, timedelta
+import secrets
+import string
+
+DB_PATH = os.getenv("DB_PATH", "bot.db")
+
+
+def _connect() -> sqlite3.Connection:
+    return sqlite3.connect(DB_PATH)
+
+
+def init_db() -> None:
+    with _connect() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS budgets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_id INTEGER,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                telegram_id INTEGER PRIMARY KEY,
+                budget_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(budget_id) REFERENCES budgets(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                budget_id INTEGER NOT NULL,
+                t_type TEXT NOT NULL,
+                amount REAL NOT NULL,
+                description TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(budget_id) REFERENCES budgets(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS invites (
+                code TEXT PRIMARY KEY,
+                budget_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                used_by INTEGER,
+                used_at TEXT,
+                FOREIGN KEY(budget_id) REFERENCES budgets(id)
+            )
+            """
+        )
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(budgets)")}
+        if "owner_id" not in cols:
+            conn.execute("ALTER TABLE budgets ADD COLUMN owner_id INTEGER")
+
+        conn.execute(
+            """
+            UPDATE budgets
+            SET owner_id = (
+                SELECT telegram_id FROM users WHERE users.budget_id = budgets.id LIMIT 1
+            )
+            WHERE owner_id IS NULL
+            """
+        )
+
+
+def _now() -> str:
+    return datetime.utcnow().isoformat(timespec="seconds")
+
+
+def _create_budget(conn: sqlite3.Connection, owner_id: int) -> int:
+    cur = conn.execute(
+        "INSERT INTO budgets (owner_id, created_at) VALUES (?, ?)",
+        (owner_id, _now()),
+    )
+    return int(cur.lastrowid)
+
+
+def get_or_create_user(telegram_id: int) -> None:
+    with _connect() as conn:
+        cur = conn.execute(
+            "SELECT budget_id FROM users WHERE telegram_id = ?", (telegram_id,)
+        )
+        row = cur.fetchone()
+        if row:
+            return
+        budget_id = _create_budget(conn, telegram_id)
+        conn.execute(
+            "INSERT INTO users (telegram_id, budget_id, created_at) VALUES (?, ?, ?)",
+            (telegram_id, budget_id, _now()),
+        )
+
+
+def _get_budget_id(conn: sqlite3.Connection, telegram_id: int) -> int:
+    cur = conn.execute(
+        "SELECT budget_id FROM users WHERE telegram_id = ?", (telegram_id,)
+    )
+    row = cur.fetchone()
+    if not row:
+        raise RuntimeError("User not found")
+    return int(row[0])
+
+
+def get_budget_summary(telegram_id: int) -> float:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        cur = conn.execute(
+            """
+            SELECT COALESCE(
+                SUM(CASE WHEN t_type = 'income' THEN amount ELSE -amount END),
+                0
+            )
+            FROM transactions
+            WHERE budget_id = ?
+            """,
+            (budget_id,),
+        )
+        return float(cur.fetchone()[0])
+
+
+def add_transaction(
+    telegram_id: int, t_type: str, amount: float, description: str
+) -> None:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        conn.execute(
+            """
+            INSERT INTO transactions (budget_id, t_type, amount, description, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (budget_id, t_type, amount, description, _now()),
+        )
+
+
+def get_period_summary(
+    telegram_id: int, t_type: str, days: int
+) -> tuple[float, int]:
+    start = (datetime.utcnow() - timedelta(days=days)).isoformat(timespec="seconds")
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        cur = conn.execute(
+            """
+            SELECT COALESCE(SUM(amount), 0), COUNT(*)
+            FROM transactions
+            WHERE budget_id = ? AND t_type = ? AND created_at >= ?
+            """,
+            (budget_id, t_type, start),
+        )
+        total, count = cur.fetchone()
+        return float(total), int(count)
+
+
+def _generate_code(length: int = 8) -> str:
+    alphabet = string.ascii_uppercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def create_invite(telegram_id: int) -> str:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        while True:
+            code = _generate_code()
+            try:
+                conn.execute(
+                    "INSERT INTO invites (code, budget_id, created_at) VALUES (?, ?, ?)",
+                    (code, budget_id, _now()),
+                )
+                return code
+            except sqlite3.IntegrityError:
+                continue
+
+
+def use_invite(telegram_id: int, code: str) -> bool:
+    with _connect() as conn:
+        cur = conn.execute(
+            "SELECT budget_id, used_by FROM invites WHERE code = ?", (code,)
+        )
+        row = cur.fetchone()
+        if not row:
+            return False
+        budget_id, used_by = row
+        if used_by is not None:
+            return False
+        conn.execute(
+            "UPDATE users SET budget_id = ? WHERE telegram_id = ?",
+            (budget_id, telegram_id),
+        )
+        conn.execute(
+            "UPDATE invites SET used_by = ?, used_at = ? WHERE code = ?",
+            (telegram_id, _now(), code),
+        )
+        return True
+
+
+def leave_budget(telegram_id: int) -> None:
+    with _connect() as conn:
+        cur = conn.execute(
+            "SELECT budget_id FROM users WHERE telegram_id = ?", (telegram_id,)
+        )
+        row = cur.fetchone()
+        if not row:
+            return
+        new_budget_id = _create_budget(conn, telegram_id)
+        conn.execute(
+            "UPDATE users SET budget_id = ? WHERE telegram_id = ?",
+            (new_budget_id, telegram_id),
+        )
+
+
+def _get_budget_owner(conn: sqlite3.Connection, budget_id: int) -> int | None:
+    cur = conn.execute(
+        "SELECT owner_id FROM budgets WHERE id = ?", (budget_id,)
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    return row[0]
+
+
+def get_budget_owner_id(telegram_id: int) -> int | None:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        return _get_budget_owner(conn, budget_id)
+
+
+def remove_user_from_budget(owner_id: int, target_telegram_id: int) -> bool:
+    with _connect() as conn:
+        owner_budget_id = _get_budget_id(conn, owner_id)
+        owner_of_budget = _get_budget_owner(conn, owner_budget_id)
+        if owner_of_budget != owner_id:
+            return False
+        target_budget_id = _get_budget_id(conn, target_telegram_id)
+        if target_budget_id != owner_budget_id:
+            return False
+        if target_telegram_id == owner_id:
+            return False
+        new_budget_id = _create_budget(conn, target_telegram_id)
+        conn.execute(
+            "UPDATE users SET budget_id = ? WHERE telegram_id = ?",
+            (new_budget_id, target_telegram_id),
+        )
+        return True

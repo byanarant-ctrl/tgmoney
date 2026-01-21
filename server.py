@@ -22,7 +22,7 @@ from db import (
 )
 
 
-BOT_TOKEN = os.getenv("TELEGRAM_API_KEY", "")
+BOT_TOKEN = os.getenv("TELEGRAM_API_KEY", "").strip()
 
 
 class InitPayload(BaseModel):

@@ -32,6 +32,11 @@ from db import (
     update_transaction,
     list_categories,
     category_summary,
+    list_categories_full,
+    add_category,
+    update_category,
+    delete_category,
+    ensure_category,
 )
 
 
@@ -109,6 +114,20 @@ class CategorySummaryPayload(InitPayload):
     t_type: str
     start: str | None = None
     end: str | None = None
+
+
+class CategoryManagePayload(InitPayload):
+    t_type: str
+    name: str
+
+
+class CategoryUpdatePayload(InitPayload):
+    category_id: int
+    name: str
+
+
+class CategoryDeletePayload(InitPayload):
+    category_id: int
 
 
 class SummaryRangePayload(InitPayload):
@@ -203,6 +222,8 @@ def api_transaction(payload: TransactionPayload) -> dict:
         raise HTTPException(status_code=400, detail="Invalid type")
     if payload.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
+    if payload.category:
+        ensure_category(telegram_id, t_type, payload.category.strip())
     add_transaction(
         telegram_id,
         t_type,
@@ -499,6 +520,60 @@ def api_category_summary(payload: CategorySummaryPayload) -> dict:
     return {
         "items": [{"category": cat, "total": total} for cat, total in items]
     }
+
+
+@app.post("/api/categories/list")
+def api_categories_list(payload: CategoryPayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    if payload.t_type not in {"income", "expense"}:
+        raise HTTPException(status_code=400, detail="Invalid type")
+    rows = list_categories_full(telegram_id, payload.t_type)
+    return {"items": [{"id": cid, "name": name} for cid, name in rows]}
+
+
+@app.post("/api/category/add")
+def api_category_add(payload: CategoryManagePayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    if payload.t_type not in {"income", "expense"}:
+        raise HTTPException(status_code=400, detail="Invalid type")
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name required")
+    add_category(telegram_id, payload.t_type, name)
+    return {"ok": True}
+
+
+@app.post("/api/category/update")
+def api_category_update(payload: CategoryUpdatePayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name required")
+    ok = update_category(telegram_id, payload.category_id, name)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
+
+
+@app.post("/api/category/delete")
+def api_category_delete(payload: CategoryDeletePayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    ok = delete_category(telegram_id, payload.category_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
 
 
 @app.post("/api/summary/range")

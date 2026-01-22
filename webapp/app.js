@@ -97,12 +97,16 @@ document.querySelectorAll("[data-target]").forEach((btn) => {
     if (btn.dataset.target === "expense") loadTransactions("expense");
     if (btn.dataset.target === "plans") loadPlans();
     if (btn.dataset.target === "stats") renderStats();
+    if (btn.dataset.target === "income") loadCategories("income");
+    if (btn.dataset.target === "expense") loadCategories("expense");
   });
 });
 
 settingsButton.addEventListener("click", () => {
   showPanel("settings");
   loadUsers();
+  loadCategories("income");
+  loadCategories("expense");
 });
 
 document.getElementById("income-add").addEventListener("click", async () => {
@@ -111,7 +115,9 @@ document.getElementById("income-add").addEventListener("click", async () => {
     document.getElementById("income-amount").value.replace(",", ".")
   );
   const description = document.getElementById("income-desc").value.trim();
-  const category = document.getElementById("income-category").value.trim();
+  const category =
+    document.getElementById("income-category").value.trim() ||
+    document.getElementById("income-category-select").value;
   const result = document.getElementById("income-result");
   if (!amount || Number.isNaN(amount)) {
     result.textContent = "Введите сумму.";
@@ -130,6 +136,8 @@ document.getElementById("income-add").addEventListener("click", async () => {
     document.getElementById("income-amount").value = "";
     document.getElementById("income-desc").value = "";
     document.getElementById("income-category").value = "";
+    document.getElementById("income-category-select").value = "";
+    await loadCategories("income");
     await loadTransactions("income");
   } catch (err) {
     result.textContent = err.message;
@@ -142,7 +150,9 @@ document.getElementById("expense-add").addEventListener("click", async () => {
     document.getElementById("expense-amount").value.replace(",", ".")
   );
   const description = document.getElementById("expense-desc").value.trim();
-  const category = document.getElementById("expense-category").value.trim();
+  const category =
+    document.getElementById("expense-category").value.trim() ||
+    document.getElementById("expense-category-select").value;
   const result = document.getElementById("expense-result");
   if (!amount || Number.isNaN(amount)) {
     result.textContent = "Введите сумму.";
@@ -161,6 +171,8 @@ document.getElementById("expense-add").addEventListener("click", async () => {
     document.getElementById("expense-amount").value = "";
     document.getElementById("expense-desc").value = "";
     document.getElementById("expense-category").value = "";
+    document.getElementById("expense-category-select").value = "";
+    await loadCategories("expense");
     await loadTransactions("expense");
   } catch (err) {
     result.textContent = err.message;
@@ -205,6 +217,50 @@ document.getElementById("leave-budget").addEventListener("click", async () => {
     balanceEl.textContent = formatMoney(data.balance);
     out.textContent = "Вы вышли из общего бюджета.";
     await loadUsers();
+  } catch (err) {
+    out.textContent = err.message;
+  }
+});
+
+document.getElementById("income-category-add").addEventListener("click", async () => {
+  if (!ensureTelegram()) return;
+  const name = document.getElementById("income-category-new").value.trim();
+  const out = document.getElementById("settings-result");
+  if (!name) {
+    out.textContent = "Введите категорию дохода.";
+    return;
+  }
+  try {
+    await apiPost("/api/category/add", {
+      initData: tg.initData,
+      t_type: "income",
+      name,
+    });
+    document.getElementById("income-category-new").value = "";
+    out.textContent = "Категория добавлена.";
+    await loadCategories("income");
+  } catch (err) {
+    out.textContent = err.message;
+  }
+});
+
+document.getElementById("expense-category-add").addEventListener("click", async () => {
+  if (!ensureTelegram()) return;
+  const name = document.getElementById("expense-category-new").value.trim();
+  const out = document.getElementById("settings-result");
+  if (!name) {
+    out.textContent = "Введите категорию расхода.";
+    return;
+  }
+  try {
+    await apiPost("/api/category/add", {
+      initData: tg.initData,
+      t_type: "expense",
+      name,
+    });
+    document.getElementById("expense-category-new").value = "";
+    out.textContent = "Категория добавлена.";
+    await loadCategories("expense");
   } catch (err) {
     out.textContent = err.message;
   }
@@ -530,6 +586,60 @@ async function loadUsers() {
         });
         row.appendChild(btn);
       }
+      list.appendChild(row);
+    });
+  } catch (err) {
+    list.innerHTML = `<div class="result">${err.message}</div>`;
+  }
+}
+
+async function loadCategories(tType) {
+  if (!ensureTelegram()) return;
+  const selectId =
+    tType === "income" ? "income-category-select" : "expense-category-select";
+  const listId =
+    tType === "income" ? "income-categories-list" : "expense-categories-list";
+  const select = document.getElementById(selectId);
+  const list = document.getElementById(listId);
+  try {
+    const data = await apiPost("/api/categories/list", {
+      initData: tg.initData,
+      t_type: tType,
+    });
+    select.innerHTML = "<option value=\"\">Выбрать категорию</option>";
+    list.innerHTML = "";
+    data.items.forEach((item) => {
+      const opt = document.createElement("option");
+      opt.value = item.name;
+      opt.textContent = item.name;
+      select.appendChild(opt);
+
+      const row = document.createElement("div");
+      row.className = "user-row";
+      row.innerHTML = `<span><strong>${item.name}</strong></span>`;
+      const editBtn = document.createElement("button");
+      editBtn.textContent = "Редактировать";
+      editBtn.addEventListener("click", async () => {
+        const next = window.prompt("Новое название", item.name);
+        if (!next) return;
+        await apiPost("/api/category/update", {
+          initData: tg.initData,
+          category_id: item.id,
+          name: next.trim(),
+        });
+        await loadCategories(tType);
+      });
+      const delBtn = document.createElement("button");
+      delBtn.textContent = "Удалить";
+      delBtn.addEventListener("click", async () => {
+        await apiPost("/api/category/delete", {
+          initData: tg.initData,
+          category_id: item.id,
+        });
+        await loadCategories(tType);
+      });
+      row.appendChild(editBtn);
+      row.appendChild(delBtn);
       list.appendChild(row);
     });
   } catch (err) {

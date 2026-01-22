@@ -52,6 +52,19 @@ def init_db() -> None:
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                budget_id INTEGER NOT NULL,
+                t_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(budget_id, t_type, name),
+                FOREIGN KEY(budget_id) REFERENCES budgets(id)
+            )
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS plans (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 budget_id INTEGER NOT NULL,
@@ -317,6 +330,64 @@ def category_summary(
         query += " GROUP BY cat ORDER BY SUM(amount) DESC"
         cur = conn.execute(query, tuple(params))
         return [(row[0] or "Без категории", float(row[1] or 0)) for row in cur.fetchall()]
+
+
+def list_categories_full(telegram_id: int, t_type: str) -> list[tuple[int, str]]:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        cur = conn.execute(
+            """
+            SELECT id, name
+            FROM categories
+            WHERE budget_id = ? AND t_type = ?
+            ORDER BY name ASC
+            """,
+            (budget_id, t_type),
+        )
+        return list(cur.fetchall())
+
+
+def ensure_category(telegram_id: int, t_type: str, name: str) -> None:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        try:
+            conn.execute(
+                """
+                INSERT INTO categories (budget_id, t_type, name, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (budget_id, t_type, name, _now()),
+            )
+        except sqlite3.IntegrityError:
+            return
+
+
+def add_category(telegram_id: int, t_type: str, name: str) -> None:
+    ensure_category(telegram_id, t_type, name)
+
+
+def update_category(telegram_id: int, category_id: int, name: str) -> bool:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        cur = conn.execute(
+            """
+            UPDATE categories
+            SET name = ?
+            WHERE id = ? AND budget_id = ?
+            """,
+            (name, category_id, budget_id),
+        )
+        return cur.rowcount > 0
+
+
+def delete_category(telegram_id: int, category_id: int) -> bool:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        cur = conn.execute(
+            "DELETE FROM categories WHERE id = ? AND budget_id = ?",
+            (category_id, budget_id),
+        )
+        return cur.rowcount > 0
 
 
 def _generate_code(length: int = 8) -> str:
@@ -623,4 +694,3 @@ def remove_user_from_budget(owner_id: int, target_telegram_id: int) -> bool:
             (personal_budget_id, personal_budget_id, target_telegram_id),
         )
         return True
-

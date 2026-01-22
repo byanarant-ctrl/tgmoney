@@ -31,7 +31,8 @@
         <div class="form">
           <input id="income-amount" type="number" min="0" step="0.01" placeholder="Сумма" />
           <input id="income-desc" type="text" maxlength="120" placeholder="Описание" />
-          <input id="income-category" type="text" maxlength="40" placeholder="Категория" />
+          <select id="income-category-select"></select>
+          <input id="income-category" type="text" maxlength="40" placeholder="Новая категория" />
           <button id="income-add">Добавить доход</button>
         </div>
         <div class="result" id="income-result"></div>
@@ -44,7 +45,8 @@
         <div class="form">
           <input id="expense-amount" type="number" min="0" step="0.01" placeholder="Сумма" />
           <input id="expense-desc" type="text" maxlength="120" placeholder="Описание" />
-          <input id="expense-category" type="text" maxlength="40" placeholder="Категория" />
+          <select id="expense-category-select"></select>
+          <input id="expense-category" type="text" maxlength="40" placeholder="Новая категория" />
           <button id="expense-add">Добавить расход</button>
         </div>
         <div class="result" id="expense-result"></div>
@@ -140,6 +142,22 @@
         <div class="form">
           <div class="result">Пользователи общего бюджета:</div>
           <div id="users-list" class="list"></div>
+        </div>
+        <div class="form">
+          <div class="result">Категории доходов:</div>
+          <div class="form">
+            <input id="income-category-new" type="text" maxlength="40" placeholder="Новая категория дохода" />
+            <button id="income-category-add">Добавить</button>
+          </div>
+          <div id="income-categories-list" class="list"></div>
+        </div>
+        <div class="form">
+          <div class="result">Категории расходов:</div>
+          <div class="form">
+            <input id="expense-category-new" type="text" maxlength="40" placeholder="Новая категория расхода" />
+            <button id="expense-category-add">Добавить</button>
+          </div>
+          <div id="expense-categories-list" class="list"></div>
         </div>
         <div class="result" id="settings-result"></div>
         <button class="back">Назад</button>

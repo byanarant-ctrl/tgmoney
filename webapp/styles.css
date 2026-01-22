@@ -94,6 +94,10 @@ body {
   background: linear-gradient(140deg, #f6efe6, #d8c7b3);
 }
 
+.pill.stats {
+  background: linear-gradient(140deg, #efe7dc, #cfc0ad);
+}
+
 .quick-actions {
   display: flex;
   justify-content: center;
@@ -189,6 +193,22 @@ canvas {
   border: 1px solid var(--stroke);
 }
 
+.plan-progress {
+  margin-top: 8px;
+  background: #eadfce;
+  border-radius: 999px;
+  overflow: hidden;
+  height: 10px;
+  border: 1px solid var(--stroke);
+}
+
+.plan-progress span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #7c2d1b, #2b2a26);
+  width: 0%;
+}
+
 .plans-list {
   margin-top: 14px;
   display: grid;
@@ -226,6 +246,18 @@ canvas {
   font-size: 13px;
   color: var(--muted);
   cursor: pointer;
+}
+
+.user-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-row button {
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
 .list-item strong {

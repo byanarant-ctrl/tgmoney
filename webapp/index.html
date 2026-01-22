@@ -29,6 +29,9 @@
         <button class="pill plans" data-target="plans">
           Планы
         </button>
+        <button class="pill stats" data-target="stats">
+          Статистика
+        </button>
       </section>
 
 
@@ -40,17 +43,6 @@
           <input id="income-category" type="text" maxlength="40" placeholder="Категория" />
           <button id="income-add">Добавить доход</button>
         </div>
-        <div class="quick">
-          <button data-summary="income:week">Неделя</button>
-          <button data-summary="income:month">Месяц</button>
-          <button data-summary="income:year">Год</button>
-        </div>
-        <div class="chart-controls">
-          <input id="income-start" type="date" />
-          <input id="income-end" type="date" />
-          <button id="income-chart">Диаграмма</button>
-        </div>
-        <canvas id="income-chart-canvas" height="220"></canvas>
         <div class="result" id="income-result"></div>
         <div class="list" id="income-list"></div>
         <button class="back">Назад</button>
@@ -64,17 +56,6 @@
           <input id="expense-category" type="text" maxlength="40" placeholder="Категория" />
           <button id="expense-add">Добавить расход</button>
         </div>
-        <div class="quick">
-          <button data-summary="expense:week">Неделя</button>
-          <button data-summary="expense:month">Месяц</button>
-          <button data-summary="expense:year">Год</button>
-        </div>
-        <div class="chart-controls">
-          <input id="expense-start" type="date" />
-          <input id="expense-end" type="date" />
-          <button id="expense-chart">Диаграмма</button>
-        </div>
-        <canvas id="expense-chart-canvas" height="220"></canvas>
         <div class="result" id="expense-result"></div>
         <div class="list" id="expense-list"></div>
         <button class="back">Назад</button>
@@ -116,6 +97,27 @@
         <button class="back">Назад</button>
       </section>
 
+      <section class="panel hidden" id="panel-stats">
+        <h2>Статистика</h2>
+        <div class="quick">
+          <button id="stats-income">Доходы</button>
+          <button id="stats-expense">Расходы</button>
+        </div>
+        <div class="quick">
+          <button data-period="week">Неделя</button>
+          <button data-period="month">Месяц</button>
+          <button data-period="year">Год</button>
+        </div>
+        <div class="chart-controls">
+          <input id="stats-start" type="date" />
+          <input id="stats-end" type="date" />
+          <button id="stats-apply">Показать</button>
+        </div>
+        <div class="result" id="stats-result"></div>
+        <canvas id="stats-chart-canvas" height="240"></canvas>
+        <button class="back">Назад</button>
+      </section>
+
       <section class="panel hidden" id="panel-transaction-edit">
         <h2>Изменить запись</h2>
         <div class="form">
@@ -147,14 +149,6 @@
         <div class="form">
           <div class="result">Пользователи общего бюджета:</div>
           <div id="users-list" class="list"></div>
-        </div>
-        <div class="form hidden" id="kick-form">
-          <input id="kick-id" type="number" placeholder="Telegram ID" />
-          <button id="kick-submit">Удалить пользователя</button>
-        </div>
-        <div class="form hidden" id="kick-name-form">
-          <input id="kick-name" type="text" placeholder="Тег пользователя (например @name)" />
-          <button id="kick-name-submit">Удалить по тегу</button>
         </div>
         <div class="result" id="settings-result"></div>
         <button class="back">Назад</button>

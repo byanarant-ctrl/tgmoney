@@ -366,6 +366,10 @@ def use_invite(telegram_id: int, code: str) -> bool:
             "UPDATE invites SET used_by = ?, used_at = ? WHERE code = ?",
             (telegram_id, _now(), code),
         )
+        conn.execute(
+            "UPDATE users SET shared_budget_id = ? WHERE budget_id = ?",
+            (budget_id, budget_id),
+        )
         return True
 
 
@@ -620,24 +624,3 @@ def remove_user_from_budget(owner_id: int, target_telegram_id: int) -> bool:
         )
         return True
 
-
-def remove_user_from_budget_by_name(owner_id: int, target_name: str) -> bool:
-    with _connect() as conn:
-        owner_budget_id = _get_budget_id(conn, owner_id)
-        owner_of_budget = _get_budget_owner(conn, owner_budget_id)
-        if owner_of_budget != owner_id:
-            return False
-        cur = conn.execute(
-            """
-            SELECT telegram_id FROM users
-            WHERE budget_id = ? AND LOWER(COALESCE(display_name, '')) = LOWER(?)
-            """,
-            (owner_budget_id, target_name),
-        )
-        row = cur.fetchone()
-        if not row:
-            return False
-        target_telegram_id = int(row[0])
-        if target_telegram_id == owner_id:
-            return False
-        return remove_user_from_budget(owner_id, target_telegram_id)

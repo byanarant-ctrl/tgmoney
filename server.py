@@ -24,7 +24,6 @@ from db import (
     leave_budget,
     list_plans,
     remove_user_from_budget,
-    remove_user_from_budget_by_name,
     update_plan,
     deposit_plan,
     use_invite,
@@ -61,10 +60,6 @@ class JoinPayload(InitPayload):
 
 class KickPayload(InitPayload):
     target_id: int
-
-
-class KickNamePayload(InitPayload):
-    display_name: str
 
 
 class PlanPayload(InitPayload):
@@ -111,6 +106,12 @@ class CategoryPayload(InitPayload):
 
 
 class CategorySummaryPayload(InitPayload):
+    t_type: str
+    start: str | None = None
+    end: str | None = None
+
+
+class SummaryRangePayload(InitPayload):
     t_type: str
     start: str | None = None
     end: str | None = None
@@ -275,18 +276,6 @@ def api_kick(payload: KickPayload) -> dict:
     return {"ok": True}
 
 
-@app.post("/api/kick/name")
-def api_kick_name(payload: KickNamePayload) -> dict:
-    user = _verify_init_data(payload.initData)
-    telegram_id = int(user["id"])
-    display_name = _display_name(user)
-    get_or_create_user(telegram_id, display_name)
-    ok = remove_user_from_budget_by_name(telegram_id, payload.display_name.strip())
-    if not ok:
-        raise HTTPException(status_code=400, detail="Not allowed")
-    return {"ok": True}
-
-
 @app.post("/api/transactions")
 def api_transactions(payload: SummaryPayload) -> dict:
     user = _verify_init_data(payload.initData)
@@ -415,6 +404,7 @@ def api_users(payload: InitPayload) -> dict:
         rows = get_budget_users(telegram_id, use_shared=True)
         items = [{"telegram_id": uid, "display_name": name} for uid, name in rows]
     return {
+        "telegram_id": telegram_id,
         "users": items,
         "mode": "shared" if shared_budget and active_budget == shared_budget else "personal",
         "has_shared": bool(shared_budget),
@@ -509,3 +499,22 @@ def api_category_summary(payload: CategorySummaryPayload) -> dict:
     return {
         "items": [{"category": cat, "total": total} for cat, total in items]
     }
+
+
+@app.post("/api/summary/range")
+def api_summary_range(payload: SummaryRangePayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    if payload.t_type not in {"income", "expense"}:
+        raise HTTPException(status_code=400, detail="Invalid type")
+    rows = list_transactions(
+        telegram_id,
+        payload.t_type,
+        payload.start,
+        payload.end,
+        limit=500,
+    )
+    total = sum(row[1] for row in rows)
+    return {"total": total, "count": len(rows)}

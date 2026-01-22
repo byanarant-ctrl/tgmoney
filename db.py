@@ -8,17 +8,33 @@ try:
     import psycopg
 except ImportError:  # pragma: no cover - handled by runtime requirements
     psycopg = None
+try:
+    from psycopg_pool import ConnectionPool
+except ImportError:  # pragma: no cover - handled by runtime requirements
+    ConnectionPool = None
 
 DB_URL = os.getenv("DATABASE_URL", "").strip()
 DB_PATH = os.getenv("DB_PATH", "bot.db")
 DB_KIND = "postgres" if DB_URL else "sqlite"
+_POOL = None
+
+if DB_KIND == "postgres":
+    if ConnectionPool is None:
+        raise RuntimeError("psycopg_pool is required for PostgreSQL pooling")
+    _POOL = ConnectionPool(
+        conninfo=DB_URL,
+        min_size=1,
+        max_size=5,
+        timeout=10,
+        open=True,
+    )
 
 
 def _connect():
     if DB_KIND == "postgres":
         if psycopg is None:
             raise RuntimeError("psycopg is required for PostgreSQL")
-        return psycopg.connect(DB_URL)
+        return _POOL.connection()
     return sqlite3.connect(DB_PATH)
 
 

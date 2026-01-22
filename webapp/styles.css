@@ -175,6 +175,20 @@ button:active {
   min-height: 18px;
 }
 
+.chart-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+canvas {
+  margin-top: 10px;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid var(--stroke);
+}
+
 .plans-list {
   margin-top: 14px;
   display: grid;
@@ -211,6 +225,7 @@ button:active {
   gap: 8px;
   font-size: 13px;
   color: var(--muted);
+  cursor: pointer;
 }
 
 .list-item strong {

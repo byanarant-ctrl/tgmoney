@@ -37,6 +37,7 @@
         <div class="form">
           <input id="income-amount" type="number" min="0" step="0.01" placeholder="Сумма" />
           <input id="income-desc" type="text" maxlength="120" placeholder="Описание" />
+          <input id="income-category" type="text" maxlength="40" placeholder="Категория" />
           <button id="income-add">Добавить доход</button>
         </div>
         <div class="quick">
@@ -44,6 +45,12 @@
           <button data-summary="income:month">Месяц</button>
           <button data-summary="income:year">Год</button>
         </div>
+        <div class="chart-controls">
+          <input id="income-start" type="date" />
+          <input id="income-end" type="date" />
+          <button id="income-chart">Диаграмма</button>
+        </div>
+        <canvas id="income-chart-canvas" height="220"></canvas>
         <div class="result" id="income-result"></div>
         <div class="list" id="income-list"></div>
         <button class="back">Назад</button>
@@ -54,6 +61,7 @@
         <div class="form">
           <input id="expense-amount" type="number" min="0" step="0.01" placeholder="Сумма" />
           <input id="expense-desc" type="text" maxlength="120" placeholder="Описание" />
+          <input id="expense-category" type="text" maxlength="40" placeholder="Категория" />
           <button id="expense-add">Добавить расход</button>
         </div>
         <div class="quick">
@@ -61,6 +69,12 @@
           <button data-summary="expense:month">Месяц</button>
           <button data-summary="expense:year">Год</button>
         </div>
+        <div class="chart-controls">
+          <input id="expense-start" type="date" />
+          <input id="expense-end" type="date" />
+          <button id="expense-chart">Диаграмма</button>
+        </div>
+        <canvas id="expense-chart-canvas" height="220"></canvas>
         <div class="result" id="expense-result"></div>
         <div class="list" id="expense-list"></div>
         <button class="back">Назад</button>
@@ -102,6 +116,18 @@
         <button class="back">Назад</button>
       </section>
 
+      <section class="panel hidden" id="panel-transaction-edit">
+        <h2>Изменить запись</h2>
+        <div class="form">
+          <input id="tx-edit-amount" type="number" min="0" step="0.01" placeholder="Сумма" />
+          <input id="tx-edit-desc" type="text" maxlength="120" placeholder="Описание" />
+          <input id="tx-edit-category" type="text" maxlength="40" placeholder="Категория" />
+          <button id="tx-edit-save">Сохранить</button>
+        </div>
+        <div class="result" id="tx-edit-result"></div>
+        <button class="back">Назад</button>
+      </section>
+
       <section class="panel hidden" id="panel-settings">
         <h2>Настройки</h2>
         <div class="form">
@@ -116,12 +142,19 @@
           <button id="switch-budget">Переключить бюджет</button>
         </div>
         <div class="form">
+          <button id="leave-budget">Выйти из общего бюджета</button>
+        </div>
+        <div class="form">
           <div class="result">Пользователи общего бюджета:</div>
           <div id="users-list" class="list"></div>
         </div>
         <div class="form hidden" id="kick-form">
           <input id="kick-id" type="number" placeholder="Telegram ID" />
           <button id="kick-submit">Удалить пользователя</button>
+        </div>
+        <div class="form hidden" id="kick-name-form">
+          <input id="kick-name" type="text" placeholder="Тег пользователя (например @name)" />
+          <button id="kick-name-submit">Удалить по тегу</button>
         </div>
         <div class="result" id="settings-result"></div>
         <button class="back">Назад</button>
@@ -133,6 +166,7 @@
       </section>
     </main>
     <button class="fab gear" id="settings-open" aria-label="Настройки">⚙</button>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

@@ -212,7 +212,7 @@ async def add_description(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return ConversationHandler.END
     user = update.effective_user
     display_name = f"@{user.username}" if user.username else user.full_name
-    add_transaction(user.id, t_type, amount, description, display_name)
+    add_transaction(user.id, t_type, amount, description, display_name, None)
     when = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     await update.message.reply_text(
         f"Запись добавлена ({when}).", reply_markup=MAIN_MENU

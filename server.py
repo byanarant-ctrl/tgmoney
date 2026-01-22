@@ -24,10 +24,15 @@ from db import (
     leave_budget,
     list_plans,
     remove_user_from_budget,
+    remove_user_from_budget_by_name,
     update_plan,
     deposit_plan,
     use_invite,
     init_db,
+    list_transactions,
+    update_transaction,
+    list_categories,
+    category_summary,
 )
 
 
@@ -42,6 +47,7 @@ class TransactionPayload(InitPayload):
     t_type: str
     amount: float
     description: str
+    category: str | None = None
 
 
 class SummaryPayload(InitPayload):
@@ -55,6 +61,10 @@ class JoinPayload(InitPayload):
 
 class KickPayload(InitPayload):
     target_id: int
+
+
+class KickNamePayload(InitPayload):
+    display_name: str
 
 
 class PlanPayload(InitPayload):
@@ -81,6 +91,29 @@ class PlanGetPayload(InitPayload):
 
 class BudgetSwitchPayload(InitPayload):
     mode: str
+
+
+class TransactionListPayload(InitPayload):
+    t_type: str
+    start: str | None = None
+    end: str | None = None
+
+
+class TransactionUpdatePayload(InitPayload):
+    transaction_id: int
+    amount: float
+    description: str
+    category: str
+
+
+class CategoryPayload(InitPayload):
+    t_type: str
+
+
+class CategorySummaryPayload(InitPayload):
+    t_type: str
+    start: str | None = None
+    end: str | None = None
 
 
 def _verify_init_data(init_data: str) -> dict:
@@ -175,6 +208,7 @@ def api_transaction(payload: TransactionPayload) -> dict:
         payload.amount,
         payload.description.strip(),
         display_name,
+        (payload.category or "").strip() or None,
     )
     balance = get_budget_summary(telegram_id)
     return {"ok": True, "balance": balance}
@@ -241,6 +275,18 @@ def api_kick(payload: KickPayload) -> dict:
     return {"ok": True}
 
 
+@app.post("/api/kick/name")
+def api_kick_name(payload: KickNamePayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    ok = remove_user_from_budget_by_name(telegram_id, payload.display_name.strip())
+    if not ok:
+        raise HTTPException(status_code=400, detail="Not allowed")
+    return {"ok": True}
+
+
 @app.post("/api/transactions")
 def api_transactions(payload: SummaryPayload) -> dict:
     user = _verify_init_data(payload.initData)
@@ -252,12 +298,14 @@ def api_transactions(payload: SummaryPayload) -> dict:
     rows = get_recent_transactions(telegram_id, payload.t_type, limit=10)
     items = [
         {
+            "id": tx_id,
             "amount": amount,
             "description": description,
             "added_by": added_by,
+            "category": category,
             "created_at": created_at,
         }
-        for amount, description, added_by, created_at in rows
+        for tx_id, amount, description, added_by, category, created_at in rows
     ]
     return {"items": items}
 
@@ -385,3 +433,79 @@ def api_budget_switch(payload: BudgetSwitchPayload) -> dict:
         raise HTTPException(status_code=400, detail="Not allowed")
     balance = get_budget_summary(telegram_id)
     return {"ok": True, "balance": balance}
+
+
+@app.post("/api/transactions/list")
+def api_transactions_list(payload: TransactionListPayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    if payload.t_type not in {"income", "expense"}:
+        raise HTTPException(status_code=400, detail="Invalid type")
+    rows = list_transactions(
+        telegram_id,
+        payload.t_type,
+        payload.start,
+        payload.end,
+        limit=50,
+    )
+    items = [
+        {
+            "id": tx_id,
+            "amount": amount,
+            "description": description,
+            "added_by": added_by,
+            "category": category,
+            "created_at": created_at,
+        }
+        for tx_id, amount, description, added_by, category, created_at in rows
+    ]
+    return {"items": items}
+
+
+@app.post("/api/transaction/update")
+def api_transaction_update(payload: TransactionUpdatePayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    if payload.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+    ok = update_transaction(
+        telegram_id,
+        payload.transaction_id,
+        payload.amount,
+        payload.description.strip(),
+        payload.category.strip(),
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Not found")
+    balance = get_budget_summary(telegram_id)
+    return {"ok": True, "balance": balance}
+
+
+@app.post("/api/categories")
+def api_categories(payload: CategoryPayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    if payload.t_type not in {"income", "expense"}:
+        raise HTTPException(status_code=400, detail="Invalid type")
+    items = list_categories(telegram_id, payload.t_type)
+    return {"items": items}
+
+
+@app.post("/api/categories/summary")
+def api_category_summary(payload: CategorySummaryPayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    if payload.t_type not in {"income", "expense"}:
+        raise HTTPException(status_code=400, detail="Invalid type")
+    items = category_summary(telegram_id, payload.t_type, payload.start, payload.end)
+    return {
+        "items": [{"category": cat, "total": total} for cat, total in items]
+    }

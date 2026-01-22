@@ -8,6 +8,7 @@ const panels = {
   planCreate: document.getElementById("panel-plan-create"),
   planDetail: document.getElementById("panel-plan-detail"),
   settings: document.getElementById("panel-settings"),
+  transactionEdit: document.getElementById("panel-transaction-edit"),
   error: document.getElementById("panel-error"),
 };
 
@@ -18,6 +19,10 @@ const homeSections = [
 const settingsButton = document.getElementById("settings-open");
 let currentPlanId = null;
 let currentMode = "personal";
+let currentTxId = null;
+let currentTxType = null;
+let incomeChart = null;
+let expenseChart = null;
 const errorMessage = document.getElementById("error-message");
 
 function showPanel(name) {
@@ -67,8 +72,10 @@ async function init() {
     const data = await apiPost("/api/init", { initData: tg.initData });
     balanceEl.textContent = formatMoney(data.balance);
     const kickForm = document.getElementById("kick-form");
+    const kickNameForm = document.getElementById("kick-name-form");
     if (data.is_owner) {
       kickForm.classList.remove("hidden");
+      kickNameForm.classList.remove("hidden");
     }
     currentMode = data.mode;
     await loadPlans();
@@ -111,6 +118,7 @@ document.getElementById("income-add").addEventListener("click", async () => {
     document.getElementById("income-amount").value.replace(",", ".")
   );
   const description = document.getElementById("income-desc").value.trim();
+  const category = document.getElementById("income-category").value.trim();
   const result = document.getElementById("income-result");
   if (!amount || Number.isNaN(amount)) {
     result.textContent = "Введите сумму.";
@@ -122,11 +130,13 @@ document.getElementById("income-add").addEventListener("click", async () => {
       t_type: "income",
       amount,
       description,
+      category,
     });
     balanceEl.textContent = formatMoney(data.balance);
     result.textContent = "Доход добавлен.";
     document.getElementById("income-amount").value = "";
     document.getElementById("income-desc").value = "";
+    document.getElementById("income-category").value = "";
     await loadTransactions("income");
   } catch (err) {
     result.textContent = err.message;
@@ -139,6 +149,7 @@ document.getElementById("expense-add").addEventListener("click", async () => {
     document.getElementById("expense-amount").value.replace(",", ".")
   );
   const description = document.getElementById("expense-desc").value.trim();
+  const category = document.getElementById("expense-category").value.trim();
   const result = document.getElementById("expense-result");
   if (!amount || Number.isNaN(amount)) {
     result.textContent = "Введите сумму.";
@@ -150,11 +161,13 @@ document.getElementById("expense-add").addEventListener("click", async () => {
       t_type: "expense",
       amount,
       description,
+      category,
     });
     balanceEl.textContent = formatMoney(data.balance);
     result.textContent = "Расход добавлен.";
     document.getElementById("expense-amount").value = "";
     document.getElementById("expense-desc").value = "";
+    document.getElementById("expense-category").value = "";
     await loadTransactions("expense");
   } catch (err) {
     result.textContent = err.message;
@@ -215,6 +228,19 @@ document.getElementById("join-submit").addEventListener("click", async () => {
   }
 });
 
+document.getElementById("leave-budget").addEventListener("click", async () => {
+  if (!ensureTelegram()) return;
+  const out = document.getElementById("settings-result");
+  try {
+    const data = await apiPost("/api/leave", { initData: tg.initData });
+    balanceEl.textContent = formatMoney(data.balance);
+    out.textContent = "Вы вышли из общего бюджета.";
+    await loadUsers();
+  } catch (err) {
+    out.textContent = err.message;
+  }
+});
+
 document.getElementById("kick-submit").addEventListener("click", async () => {
   if (!ensureTelegram()) return;
   const targetId = parseInt(document.getElementById("kick-id").value, 10);
@@ -227,6 +253,27 @@ document.getElementById("kick-submit").addEventListener("click", async () => {
     await apiPost("/api/kick", { initData: tg.initData, target_id: targetId });
     out.textContent = "Пользователь удален из бюджета.";
     document.getElementById("kick-id").value = "";
+    await loadUsers();
+  } catch (err) {
+    out.textContent = err.message;
+  }
+});
+
+document.getElementById("kick-name-submit").addEventListener("click", async () => {
+  if (!ensureTelegram()) return;
+  const name = document.getElementById("kick-name").value.trim();
+  const out = document.getElementById("settings-result");
+  if (!name) {
+    out.textContent = "Введите тег пользователя.";
+    return;
+  }
+  try {
+    await apiPost("/api/kick/name", {
+      initData: tg.initData,
+      display_name: name,
+    });
+    out.textContent = "Пользователь удален из бюджета.";
+    document.getElementById("kick-name").value = "";
     await loadUsers();
   } catch (err) {
     out.textContent = err.message;
@@ -345,6 +392,34 @@ document.getElementById("switch-budget").addEventListener("click", async () => {
   }
 });
 
+document.getElementById("tx-edit-save").addEventListener("click", async () => {
+  if (!ensureTelegram() || !currentTxId) return;
+  const amount = parseFloat(
+    document.getElementById("tx-edit-amount").value.replace(",", ".")
+  );
+  const description = document.getElementById("tx-edit-desc").value.trim();
+  const category = document.getElementById("tx-edit-category").value.trim();
+  const out = document.getElementById("tx-edit-result");
+  if (!amount || Number.isNaN(amount)) {
+    out.textContent = "Введите сумму.";
+    return;
+  }
+  try {
+    const data = await apiPost("/api/transaction/update", {
+      initData: tg.initData,
+      transaction_id: currentTxId,
+      amount,
+      description,
+      category,
+    });
+    balanceEl.textContent = formatMoney(data.balance);
+    out.textContent = "Запись обновлена.";
+    await loadTransactions(currentTxType || "expense");
+  } catch (err) {
+    out.textContent = err.message;
+  }
+});
+
 async function loadPlans() {
   if (!ensureTelegram()) return;
   const list = document.getElementById("plans-list");
@@ -403,10 +478,9 @@ async function loadTransactions(tType) {
   );
   list.innerHTML = "";
   try {
-    const data = await apiPost("/api/transactions", {
+    const data = await apiPost("/api/transactions/list", {
       initData: tg.initData,
       t_type: tType,
-      period: "week",
     });
     if (!data.items.length) {
       list.innerHTML = "<div class=\"result\">Нет записей.</div>";
@@ -416,9 +490,18 @@ async function loadTransactions(tType) {
       const row = document.createElement("div");
       row.className = "list-item";
       row.innerHTML = `
-        <span><strong>${formatMoney(item.amount)}</strong> · ${item.description || "Без описания"}</span>
+        <span><strong>${formatMoney(item.amount)}</strong> · ${item.description || "Без описания"} · ${item.category || "Без категории"}</span>
         <span>${item.added_by || "—"}</span>
       `;
+      row.addEventListener("click", () => {
+        currentTxId = item.id;
+        currentTxType = tType;
+        document.getElementById("tx-edit-amount").value = item.amount;
+        document.getElementById("tx-edit-desc").value = item.description;
+        document.getElementById("tx-edit-category").value = item.category || "";
+        document.getElementById("tx-edit-result").textContent = "";
+        showPanel("transactionEdit");
+      });
       list.appendChild(row);
     });
   } catch (err) {
@@ -464,3 +547,53 @@ async function loadUsers() {
 
 showPanel("home");
 init();
+
+document.getElementById("income-chart").addEventListener("click", () => {
+  renderChart("income");
+});
+
+document.getElementById("expense-chart").addEventListener("click", () => {
+  renderChart("expense");
+});
+
+async function renderChart(tType) {
+  if (!ensureTelegram()) return;
+  const start = document.getElementById(`${tType}-start`).value;
+  const end = document.getElementById(`${tType}-end`).value;
+  const canvas = document.getElementById(`${tType}-chart-canvas`);
+  try {
+    const data = await apiPost("/api/categories/summary", {
+      initData: tg.initData,
+      t_type: tType,
+      start: start ? `${start}T00:00:00` : null,
+      end: end ? `${end}T23:59:59` : null,
+    });
+    const labels = data.items.map((item) => item.category);
+    const values = data.items.map((item) => item.total);
+    const colors = labels.map((_, idx) => {
+      const hue = (idx * 47) % 360;
+      return `hsl(${hue}, 55%, 60%)`;
+    });
+    const chartData = {
+      labels,
+      datasets: [
+        {
+          data: values,
+          backgroundColor: colors,
+        },
+      ],
+    };
+    const config = { type: "pie", data: chartData };
+    if (tType === "income" && incomeChart) incomeChart.destroy();
+    if (tType === "expense" && expenseChart) expenseChart.destroy();
+    const chart = new Chart(canvas, config);
+    if (tType === "income") incomeChart = chart;
+    if (tType === "expense") expenseChart = chart;
+  } catch (err) {
+    const out =
+      tType === "income"
+        ? document.getElementById("income-result")
+        : document.getElementById("expense-result");
+    out.textContent = err.message;
+  }
+}

@@ -44,6 +44,7 @@ def init_db() -> None:
                 amount REAL NOT NULL,
                 description TEXT NOT NULL,
                 added_by TEXT,
+                category TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(budget_id) REFERENCES budgets(id)
             )
@@ -89,6 +90,8 @@ def init_db() -> None:
         tx_cols = {row[1] for row in conn.execute("PRAGMA table_info(transactions)")}
         if "added_by" not in tx_cols:
             conn.execute("ALTER TABLE transactions ADD COLUMN added_by TEXT")
+        if "category" not in tx_cols:
+            conn.execute("ALTER TABLE transactions ADD COLUMN category TEXT")
         plan_cols = {row[1] for row in conn.execute("PRAGMA table_info(plans)")}
         if "current_amount" not in plan_cols:
             conn.execute("ALTER TABLE plans ADD COLUMN current_amount REAL NOT NULL DEFAULT 0")
@@ -176,18 +179,23 @@ def get_budget_summary(telegram_id: int) -> float:
 
 
 def add_transaction(
-    telegram_id: int, t_type: str, amount: float, description: str, added_by: str | None
+    telegram_id: int,
+    t_type: str,
+    amount: float,
+    description: str,
+    added_by: str | None,
+    category: str | None,
 ) -> None:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
         conn.execute(
             """
             INSERT INTO transactions (
-                budget_id, t_type, amount, description, added_by, created_at
+                budget_id, t_type, amount, description, added_by, category, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (budget_id, t_type, amount, description, added_by, _now()),
+            (budget_id, t_type, amount, description, added_by, category, _now()),
         )
 
 
@@ -211,12 +219,12 @@ def get_period_summary(
 
 def get_recent_transactions(
     telegram_id: int, t_type: str, limit: int = 10
-) -> list[tuple[float, str, str, str]]:
+) -> list[tuple[int, float, str, str, str, str]]:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
         cur = conn.execute(
             """
-            SELECT amount, description, COALESCE(added_by, ''), created_at
+            SELECT id, amount, description, COALESCE(added_by, ''), COALESCE(category, ''), created_at
             FROM transactions
             WHERE budget_id = ? AND t_type = ?
             ORDER BY id DESC
@@ -225,6 +233,90 @@ def get_recent_transactions(
             (budget_id, t_type, limit),
         )
         return list(cur.fetchall())
+
+
+def list_transactions(
+    telegram_id: int,
+    t_type: str,
+    start: str | None,
+    end: str | None,
+    limit: int = 50,
+) -> list[tuple[int, float, str, str, str, str]]:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        query = """
+            SELECT id, amount, description, COALESCE(added_by, ''), COALESCE(category, ''), created_at
+            FROM transactions
+            WHERE budget_id = ? AND t_type = ?
+        """
+        params: list = [budget_id, t_type]
+        if start:
+            query += " AND created_at >= ?"
+            params.append(start)
+        if end:
+            query += " AND created_at <= ?"
+            params.append(end)
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        cur = conn.execute(query, tuple(params))
+        return list(cur.fetchall())
+
+
+def update_transaction(
+    telegram_id: int,
+    transaction_id: int,
+    amount: float,
+    description: str,
+    category: str,
+) -> bool:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        cur = conn.execute(
+            """
+            UPDATE transactions
+            SET amount = ?, description = ?, category = ?
+            WHERE id = ? AND budget_id = ?
+            """,
+            (amount, description, category, transaction_id, budget_id),
+        )
+        return cur.rowcount > 0
+
+
+def list_categories(telegram_id: int, t_type: str) -> list[str]:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        cur = conn.execute(
+            """
+            SELECT DISTINCT category
+            FROM transactions
+            WHERE budget_id = ? AND t_type = ? AND category IS NOT NULL AND category != ''
+            ORDER BY category ASC
+            """,
+            (budget_id, t_type),
+        )
+        return [row[0] for row in cur.fetchall()]
+
+
+def category_summary(
+    telegram_id: int, t_type: str, start: str | None, end: str | None
+) -> list[tuple[str, float]]:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        query = """
+            SELECT COALESCE(category, 'Без категории') AS cat, SUM(amount)
+            FROM transactions
+            WHERE budget_id = ? AND t_type = ?
+        """
+        params: list = [budget_id, t_type]
+        if start:
+            query += " AND created_at >= ?"
+            params.append(start)
+        if end:
+            query += " AND created_at <= ?"
+            params.append(end)
+        query += " GROUP BY cat ORDER BY SUM(amount) DESC"
+        cur = conn.execute(query, tuple(params))
+        return [(row[0] or "Без категории", float(row[1] or 0)) for row in cur.fetchall()]
 
 
 def _generate_code(length: int = 8) -> str:
@@ -527,3 +619,25 @@ def remove_user_from_budget(owner_id: int, target_telegram_id: int) -> bool:
             (personal_budget_id, personal_budget_id, target_telegram_id),
         )
         return True
+
+
+def remove_user_from_budget_by_name(owner_id: int, target_name: str) -> bool:
+    with _connect() as conn:
+        owner_budget_id = _get_budget_id(conn, owner_id)
+        owner_of_budget = _get_budget_owner(conn, owner_budget_id)
+        if owner_of_budget != owner_id:
+            return False
+        cur = conn.execute(
+            """
+            SELECT telegram_id FROM users
+            WHERE budget_id = ? AND LOWER(COALESCE(display_name, '')) = LOWER(?)
+            """,
+            (owner_budget_id, target_name),
+        )
+        row = cur.fetchone()
+        if not row:
+            return False
+        target_telegram_id = int(row[0])
+        if target_telegram_id == owner_id:
+            return False
+        return remove_user_from_budget(owner_id, target_telegram_id)

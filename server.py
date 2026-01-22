@@ -10,12 +10,15 @@ from pydantic import BaseModel
 
 from db import (
     add_transaction,
+    add_plan,
     create_invite,
     get_budget_owner_id,
     get_budget_summary,
     get_or_create_user,
     get_period_summary,
+    get_recent_transactions,
     leave_budget,
+    list_plans,
     remove_user_from_budget,
     use_invite,
     init_db,
@@ -48,6 +51,12 @@ class KickPayload(InitPayload):
     target_id: int
 
 
+class PlanPayload(InitPayload):
+    title: str
+    description: str
+    target_amount: float
+
+
 def _verify_init_data(init_data: str) -> dict:
     if not BOT_TOKEN:
         raise HTTPException(status_code=500, detail="Missing TELEGRAM_API_KEY")
@@ -76,6 +85,15 @@ def _period_to_days(period: str) -> int | None:
     return {"week": 7, "month": 30, "year": 365}.get(period)
 
 
+def _display_name(user: dict) -> str:
+    username = user.get("username")
+    if username:
+        return f"@{username}"
+    parts = [user.get("first_name", ""), user.get("last_name", "")]
+    name = " ".join(p for p in parts if p)
+    return name or f"id:{user.get('id')}"
+
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -100,23 +118,35 @@ def health() -> dict:
 def api_init(payload: InitPayload) -> dict:
     user = _verify_init_data(payload.initData)
     telegram_id = int(user["id"])
-    get_or_create_user(telegram_id)
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
     balance = get_budget_summary(telegram_id)
     owner_id = get_budget_owner_id(telegram_id)
-    return {"telegram_id": telegram_id, "balance": balance, "is_owner": owner_id == telegram_id}
+    return {
+        "telegram_id": telegram_id,
+        "balance": balance,
+        "is_owner": owner_id == telegram_id,
+    }
 
 
 @app.post("/api/transaction")
 def api_transaction(payload: TransactionPayload) -> dict:
     user = _verify_init_data(payload.initData)
     telegram_id = int(user["id"])
-    get_or_create_user(telegram_id)
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
     t_type = payload.t_type
     if t_type not in {"income", "expense"}:
         raise HTTPException(status_code=400, detail="Invalid type")
     if payload.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
-    add_transaction(telegram_id, t_type, payload.amount, payload.description.strip())
+    add_transaction(
+        telegram_id,
+        t_type,
+        payload.amount,
+        payload.description.strip(),
+        display_name,
+    )
     balance = get_budget_summary(telegram_id)
     return {"ok": True, "balance": balance}
 
@@ -125,7 +155,8 @@ def api_transaction(payload: TransactionPayload) -> dict:
 def api_summary(payload: SummaryPayload) -> dict:
     user = _verify_init_data(payload.initData)
     telegram_id = int(user["id"])
-    get_or_create_user(telegram_id)
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
     if payload.t_type not in {"income", "expense"}:
         raise HTTPException(status_code=400, detail="Invalid type")
     days = _period_to_days(payload.period)
@@ -139,7 +170,8 @@ def api_summary(payload: SummaryPayload) -> dict:
 def api_invite(payload: InitPayload) -> dict:
     user = _verify_init_data(payload.initData)
     telegram_id = int(user["id"])
-    get_or_create_user(telegram_id)
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
     code = create_invite(telegram_id)
     return {"code": code}
 
@@ -148,7 +180,8 @@ def api_invite(payload: InitPayload) -> dict:
 def api_join(payload: JoinPayload) -> dict:
     user = _verify_init_data(payload.initData)
     telegram_id = int(user["id"])
-    get_or_create_user(telegram_id)
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
     ok = use_invite(telegram_id, payload.code.strip().upper())
     if not ok:
         raise HTTPException(status_code=400, detail="Invalid or used code")
@@ -160,7 +193,8 @@ def api_join(payload: JoinPayload) -> dict:
 def api_leave(payload: InitPayload) -> dict:
     user = _verify_init_data(payload.initData)
     telegram_id = int(user["id"])
-    get_or_create_user(telegram_id)
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
     leave_budget(telegram_id)
     balance = get_budget_summary(telegram_id)
     return {"ok": True, "balance": balance}
@@ -170,8 +204,67 @@ def api_leave(payload: InitPayload) -> dict:
 def api_kick(payload: KickPayload) -> dict:
     user = _verify_init_data(payload.initData)
     telegram_id = int(user["id"])
-    get_or_create_user(telegram_id)
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
     ok = remove_user_from_budget(telegram_id, payload.target_id)
     if not ok:
         raise HTTPException(status_code=400, detail="Not allowed")
+    return {"ok": True}
+
+
+@app.post("/api/transactions")
+def api_transactions(payload: SummaryPayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    if payload.t_type not in {"income", "expense"}:
+        raise HTTPException(status_code=400, detail="Invalid type")
+    rows = get_recent_transactions(telegram_id, payload.t_type, limit=10)
+    items = [
+        {
+            "amount": amount,
+            "description": description,
+            "added_by": added_by,
+            "created_at": created_at,
+        }
+        for amount, description, added_by, created_at in rows
+    ]
+    return {"items": items}
+
+
+@app.post("/api/plans")
+def api_plans(payload: InitPayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    rows = list_plans(telegram_id)
+    items = [
+        {
+            "id": plan_id,
+            "title": title,
+            "description": description,
+            "target_amount": target_amount,
+            "created_by": created_by,
+            "created_at": created_at,
+        }
+        for plan_id, title, description, target_amount, created_by, created_at in rows
+    ]
+    return {"items": items}
+
+
+@app.post("/api/plan")
+def api_plan_create(payload: PlanPayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    title = payload.title.strip()
+    description = payload.description.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Title required")
+    if payload.target_amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+    add_plan(telegram_id, title, description, payload.target_amount, display_name)
     return {"ok": True}

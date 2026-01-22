@@ -1,15 +1,15 @@
 @import url("https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=IBM+Plex+Sans:wght@300;400;600&display=swap");
 
 :root {
-  --bg: #f5efe6;
-  --bg-2: #e9dcc4;
-  --ink: #1f1f1b;
-  --muted: #6e6a61;
-  --accent: #ef6f4a;
-  --accent-2: #2a9d8f;
-  --card: #fff8ef;
-  --stroke: #1f1f1b;
-  --shadow: 0 12px 30px rgba(31, 31, 27, 0.15);
+  --bg: #efe9e0;
+  --bg-2: #d8cbb6;
+  --ink: #15120f;
+  --muted: #4f4a41;
+  --accent: #2b2a26;
+  --accent-2: #7c2d1b;
+  --card: #fbf4ea;
+  --stroke: #1b1713;
+  --shadow: 0 12px 30px rgba(15, 12, 9, 0.2);
 }
 
 * {
@@ -27,8 +27,8 @@ body {
   position: fixed;
   inset: 0;
   background:
-    radial-gradient(circle at 10% 20%, rgba(239, 111, 74, 0.18), transparent 40%),
-    radial-gradient(circle at 80% 10%, rgba(42, 157, 143, 0.2), transparent 35%),
+    radial-gradient(circle at 15% 20%, rgba(124, 45, 27, 0.18), transparent 40%),
+    radial-gradient(circle at 80% 10%, rgba(22, 22, 20, 0.2), transparent 35%),
     linear-gradient(140deg, var(--bg), var(--bg-2));
   z-index: -1;
 }
@@ -39,10 +39,11 @@ body {
   margin: 0 auto;
 }
 
+.top {
+  text-align: center;
+}
+
 .top .title {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   font-family: "Unbounded", sans-serif;
   font-size: 16px;
   text-transform: uppercase;
@@ -60,38 +61,47 @@ body {
   margin-top: 8px;
 }
 
-.menu {
-  margin-top: 24px;
+.main-actions {
+  margin-top: 28px;
   display: grid;
   gap: 14px;
+  justify-items: center;
 }
 
-.card {
-  text-align: left;
+.pill {
+  width: min(320px, 100%);
+  border-radius: 999px;
   border: 2px solid var(--stroke);
-  background: var(--card);
-  padding: 16px 18px;
-  border-radius: 18px;
-  box-shadow: var(--shadow);
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
-}
-
-.card-title {
+  padding: 16px 20px;
   font-family: "Unbounded", sans-serif;
-  font-weight: 600;
   font-size: 18px;
+  letter-spacing: 0.03em;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow);
 }
 
-.card-sub {
-  display: block;
-  color: var(--muted);
-  font-size: 13px;
-  margin-top: 4px;
+.pill.income {
+  background: linear-gradient(140deg, #f7ede0, #dccab4);
 }
 
-.card:active {
-  transform: translateY(2px);
-  box-shadow: none;
+.pill.expense {
+  background: linear-gradient(140deg, #f2e5d6, #d2b6a1);
+}
+
+.quick-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1.5px dashed var(--stroke);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-weight: 600;
 }
 
 .panel {
@@ -160,6 +170,57 @@ button:active {
   min-height: 18px;
 }
 
+.plans {
+  margin-top: 26px;
+}
+
+.plans-header h3 {
+  font-family: "Unbounded", sans-serif;
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+
+.plans-list {
+  display: grid;
+  gap: 10px;
+}
+
+.plan-card {
+  border: 1.5px solid var(--stroke);
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: #fff7ee;
+  box-shadow: var(--shadow);
+}
+
+.plan-card h4 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.plan-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.list {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.list-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.list-item strong {
+  color: var(--ink);
+}
+
 .back {
   margin-top: 16px;
   background: transparent;
@@ -169,6 +230,24 @@ button:active {
 
 .hidden {
   display: none;
+}
+
+.fab {
+  position: fixed;
+  right: 18px;
+  bottom: 24px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 2px solid var(--stroke);
+  background: var(--accent);
+  color: #fff;
+  font-size: 28px;
+  line-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow);
 }
 
 @keyframes rise {

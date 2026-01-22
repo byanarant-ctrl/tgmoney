@@ -6,20 +6,28 @@ const panels = {
   expense: document.getElementById("panel-expense"),
   plans: document.getElementById("panel-plans"),
   invite: document.getElementById("panel-invite"),
+  planCreate: document.getElementById("panel-plan-create"),
   error: document.getElementById("panel-error"),
 };
 
 const balanceEl = document.getElementById("balance");
-const menuSection = document.querySelector(".menu");
+const homeSections = [
+  document.querySelector(".main-actions"),
+  document.querySelector(".quick-actions"),
+  document.querySelector(".plans"),
+];
+const fab = document.getElementById("plan-add");
 const errorMessage = document.getElementById("error-message");
 
 function showPanel(name) {
   Object.values(panels).forEach((panel) => panel.classList.add("hidden"));
-  if (name === "menu") {
-    menuSection.classList.remove("hidden");
+  if (name === "home") {
+    homeSections.forEach((section) => section.classList.remove("hidden"));
+    fab.classList.remove("hidden");
     return;
   }
-  menuSection.classList.add("hidden");
+  homeSections.forEach((section) => section.classList.add("hidden"));
+  fab.classList.add("hidden");
   if (panels[name]) panels[name].classList.remove("hidden");
 }
 
@@ -61,22 +69,33 @@ async function init() {
     if (data.is_owner) {
       kickForm.classList.remove("hidden");
     }
+    await loadPlans();
   } catch (err) {
     errorMessage.textContent = err.message;
     showPanel("error");
   }
 }
 
-document.querySelectorAll(".card").forEach((btn) => {
+document.querySelectorAll(".back").forEach((btn) => {
   btn.addEventListener("click", () => {
-    showPanel(btn.dataset.target);
+    showPanel("home");
   });
 });
 
-document.querySelectorAll(".back").forEach((btn) => {
+document.querySelectorAll("[data-target]").forEach((btn) => {
   btn.addEventListener("click", () => {
-    showPanel("menu");
+    showPanel(btn.dataset.target);
+    if (btn.dataset.target === "income") {
+      loadTransactions("income");
+    }
+    if (btn.dataset.target === "expense") {
+      loadTransactions("expense");
+    }
   });
+});
+
+fab.addEventListener("click", () => {
+  showPanel("planCreate");
 });
 
 document.getElementById("income-add").addEventListener("click", async () => {
@@ -99,6 +118,7 @@ document.getElementById("income-add").addEventListener("click", async () => {
     });
     balanceEl.textContent = formatMoney(data.balance);
     result.textContent = "Доход добавлен.";
+    await loadTransactions("income");
   } catch (err) {
     result.textContent = err.message;
   }
@@ -124,6 +144,7 @@ document.getElementById("expense-add").addEventListener("click", async () => {
     });
     balanceEl.textContent = formatMoney(data.balance);
     result.textContent = "Расход добавлен.";
+    await loadTransactions("expense");
   } catch (err) {
     result.textContent = err.message;
   }
@@ -188,6 +209,7 @@ document.getElementById("leave-budget").addEventListener("click", async () => {
     const data = await apiPost("/api/leave", { initData: tg.initData });
     balanceEl.textContent = formatMoney(data.balance);
     out.textContent = "Вы вышли из общего бюджета.";
+    await loadPlans();
   } catch (err) {
     out.textContent = err.message;
   }
@@ -209,4 +231,91 @@ document.getElementById("kick-submit").addEventListener("click", async () => {
   }
 });
 
+document.getElementById("plan-save").addEventListener("click", async () => {
+  if (!ensureTelegram()) return;
+  const title = document.getElementById("plan-title").value.trim();
+  const description = document.getElementById("plan-desc").value.trim();
+  const targetAmount = parseFloat(
+    document.getElementById("plan-amount").value.replace(",", ".")
+  );
+  const out = document.getElementById("plan-result");
+  if (!title) {
+    out.textContent = "Введите название.";
+    return;
+  }
+  if (!targetAmount || Number.isNaN(targetAmount)) {
+    out.textContent = "Введите сумму.";
+    return;
+  }
+  try {
+    await apiPost("/api/plan", {
+      initData: tg.initData,
+      title,
+      description,
+      target_amount: targetAmount,
+    });
+    out.textContent = "План сохранен.";
+    await loadPlans();
+    showPanel("home");
+  } catch (err) {
+    out.textContent = err.message;
+  }
+});
+
+async function loadPlans() {
+  if (!ensureTelegram()) return;
+  const list = document.getElementById("plans-list");
+  list.innerHTML = "";
+  try {
+    const data = await apiPost("/api/plans", { initData: tg.initData });
+    if (!data.items.length) {
+      list.innerHTML = "<div class=\"result\">Планов пока нет.</div>";
+      return;
+    }
+    data.items.forEach((plan) => {
+      const card = document.createElement("div");
+      card.className = "plan-card";
+      card.innerHTML = `
+        <h4>${plan.title}</h4>
+        <div>${plan.description || ""}</div>
+        <div class="plan-meta">Цель: ${formatMoney(plan.target_amount)} · ${plan.created_by}</div>
+      `;
+      list.appendChild(card);
+    });
+  } catch (err) {
+    list.innerHTML = `<div class="result">${err.message}</div>`;
+  }
+}
+
+async function loadTransactions(tType) {
+  if (!ensureTelegram()) return;
+  const list = document.getElementById(
+    tType === "income" ? "income-list" : "expense-list"
+  );
+  list.innerHTML = "";
+  try {
+    const data = await apiPost("/api/transactions", {
+      initData: tg.initData,
+      t_type: tType,
+      period: "week",
+    });
+    if (!data.items.length) {
+      list.innerHTML = "<div class=\"result\">Нет записей.</div>";
+      return;
+    }
+    data.items.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "list-item";
+      row.innerHTML = `
+        <span><strong>${formatMoney(item.amount)}</strong> · ${item.description || "Без описания"}</span>
+        <span>${item.added_by || "—"}</span>
+      `;
+      list.appendChild(row);
+    });
+  } catch (err) {
+    list.innerHTML = `<div class="result">${err.message}</div>`;
+  }
+}
+
+showPanel("home");
 init();

@@ -14,30 +14,29 @@
     <div class="bg"></div>
     <main class="app">
       <header class="top">
-        <div class="title">
-          <span>Общий бюджет</span>
-          <strong id="balance">0.00</strong>
-        </div>
+        <div class="title">Общий бюджет</div>
+        <strong id="balance">0.00</strong>
         <div class="subtitle">Разница между доходами и расходами</div>
       </header>
 
-      <section class="menu">
-        <button class="card" data-target="income">
-          <span class="card-title">Доходы</span>
-          <span class="card-sub">Добавить или посмотреть статистику</span>
+      <section class="main-actions">
+        <button class="pill income" data-target="income">
+          + Доходы
         </button>
-        <button class="card" data-target="expense">
-          <span class="card-title">Расходы</span>
-          <span class="card-sub">Контроль затрат по периодам</span>
+        <button class="pill expense" data-target="expense">
+          - Расходы
         </button>
-        <button class="card" data-target="plans">
-          <span class="card-title">Планы</span>
-          <span class="card-sub">Скоро появится</span>
-        </button>
-        <button class="card" data-target="invite">
-          <span class="card-title">Пригласить</span>
-          <span class="card-sub">Объединить бюджет</span>
-        </button>
+      </section>
+
+      <section class="quick-actions">
+        <button class="ghost" data-target="invite">Пригласить</button>
+      </section>
+
+      <section class="plans">
+        <div class="plans-header">
+          <h3>Планы</h3>
+        </div>
+        <div id="plans-list" class="plans-list"></div>
       </section>
 
       <section class="panel hidden" id="panel-income">
@@ -53,6 +52,7 @@
           <button data-summary="income:year">Год</button>
         </div>
         <div class="result" id="income-result"></div>
+        <div class="list" id="income-list"></div>
         <button class="back">Назад</button>
       </section>
 
@@ -69,12 +69,13 @@
           <button data-summary="expense:year">Год</button>
         </div>
         <div class="result" id="expense-result"></div>
+        <div class="list" id="expense-list"></div>
         <button class="back">Назад</button>
       </section>
 
       <section class="panel hidden" id="panel-plans">
         <h2>Планы</h2>
-        <p>Этот раздел в разработке.</p>
+        <p>Этот раздел теперь доступен на главном экране.</p>
         <button class="back">Назад</button>
       </section>
 
@@ -99,11 +100,24 @@
         <button class="back">Назад</button>
       </section>
 
+      <section class="panel hidden" id="panel-plan-create">
+        <h2>Новый план</h2>
+        <div class="form">
+          <input id="plan-title" type="text" maxlength="80" placeholder="Название" />
+          <input id="plan-desc" type="text" maxlength="140" placeholder="Описание" />
+          <input id="plan-amount" type="number" min="0" step="0.01" placeholder="Сумма" />
+          <button id="plan-save">Сохранить</button>
+        </div>
+        <div class="result" id="plan-result"></div>
+        <button class="back">Назад</button>
+      </section>
+
       <section class="panel hidden" id="panel-error">
         <h2>Ошибка</h2>
         <p id="error-message"></p>
       </section>
     </main>
+    <button class="fab" id="plan-add" aria-label="Добавить план">+</button>
     <script src="app.js"></script>
   </body>
 </html>

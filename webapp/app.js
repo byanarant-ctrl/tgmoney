@@ -17,6 +17,7 @@ const balanceEl = document.getElementById("balance");
 const homeSections = [document.querySelector(".main-actions")];
 const settingsButton = document.getElementById("settings-open");
 const errorMessage = document.getElementById("error-message");
+const toast = document.getElementById("toast");
 
 let currentPlanId = null;
 let currentMode = "personal";
@@ -26,6 +27,9 @@ let statsType = "expense";
 let statsChart = null;
 let isOwner = false;
 let currentUserId = null;
+let currentDisplayName = null;
+let lastUpdateAt = null;
+let updateTimer = null;
 
 function showPanel(name) {
   Object.values(panels).forEach((panel) => panel.classList.add("hidden"));
@@ -75,7 +79,9 @@ async function init() {
     balanceEl.textContent = formatMoney(data.balance);
     isOwner = data.is_owner;
     currentUserId = data.telegram_id;
+    currentDisplayName = data.display_name;
     currentMode = data.mode;
+    lastUpdateAt = new Date().toISOString().slice(0, 19);
     await loadPlans();
     await loadUsers();
   } catch (err) {
@@ -93,12 +99,16 @@ document.querySelectorAll(".back").forEach((btn) => {
 document.querySelectorAll("[data-target]").forEach((btn) => {
   btn.addEventListener("click", () => {
     showPanel(btn.dataset.target);
-    if (btn.dataset.target === "income") loadTransactions("income");
-    if (btn.dataset.target === "expense") loadTransactions("expense");
+    if (btn.dataset.target === "income") {
+      loadTransactions("income");
+      loadCategories("income");
+    }
+    if (btn.dataset.target === "expense") {
+      loadTransactions("expense");
+      loadCategories("expense");
+    }
     if (btn.dataset.target === "plans") loadPlans();
     if (btn.dataset.target === "stats") renderStats();
-    if (btn.dataset.target === "income") loadCategories("income");
-    if (btn.dataset.target === "expense") loadCategories("expense");
   });
 });
 
@@ -222,49 +232,53 @@ document.getElementById("leave-budget").addEventListener("click", async () => {
   }
 });
 
-document.getElementById("income-category-add").addEventListener("click", async () => {
-  if (!ensureTelegram()) return;
-  const name = document.getElementById("income-category-new").value.trim();
-  const out = document.getElementById("settings-result");
-  if (!name) {
-    out.textContent = "Введите категорию дохода.";
-    return;
-  }
-  try {
-    await apiPost("/api/category/add", {
-      initData: tg.initData,
-      t_type: "income",
-      name,
-    });
-    document.getElementById("income-category-new").value = "";
-    out.textContent = "Категория добавлена.";
-    await loadCategories("income");
-  } catch (err) {
-    out.textContent = err.message;
-  }
-});
+document
+  .getElementById("income-category-add")
+  .addEventListener("click", async () => {
+    if (!ensureTelegram()) return;
+    const name = document.getElementById("income-category-new").value.trim();
+    const out = document.getElementById("settings-result");
+    if (!name) {
+      out.textContent = "Введите категорию дохода.";
+      return;
+    }
+    try {
+      await apiPost("/api/category/add", {
+        initData: tg.initData,
+        t_type: "income",
+        name,
+      });
+      document.getElementById("income-category-new").value = "";
+      out.textContent = "Категория добавлена.";
+      await loadCategories("income");
+    } catch (err) {
+      out.textContent = err.message;
+    }
+  });
 
-document.getElementById("expense-category-add").addEventListener("click", async () => {
-  if (!ensureTelegram()) return;
-  const name = document.getElementById("expense-category-new").value.trim();
-  const out = document.getElementById("settings-result");
-  if (!name) {
-    out.textContent = "Введите категорию расхода.";
-    return;
-  }
-  try {
-    await apiPost("/api/category/add", {
-      initData: tg.initData,
-      t_type: "expense",
-      name,
-    });
-    document.getElementById("expense-category-new").value = "";
-    out.textContent = "Категория добавлена.";
-    await loadCategories("expense");
-  } catch (err) {
-    out.textContent = err.message;
-  }
-});
+document
+  .getElementById("expense-category-add")
+  .addEventListener("click", async () => {
+    if (!ensureTelegram()) return;
+    const name = document.getElementById("expense-category-new").value.trim();
+    const out = document.getElementById("settings-result");
+    if (!name) {
+      out.textContent = "Введите категорию расхода.";
+      return;
+    }
+    try {
+      await apiPost("/api/category/add", {
+        initData: tg.initData,
+        t_type: "expense",
+        name,
+      });
+      document.getElementById("expense-category-new").value = "";
+      out.textContent = "Категория добавлена.";
+      await loadCategories("expense");
+    } catch (err) {
+      out.textContent = err.message;
+    }
+  });
 
 document.getElementById("plan-save").addEventListener("click", async () => {
   if (!ensureTelegram()) return;
@@ -543,26 +557,26 @@ async function loadUsers() {
   const list = document.getElementById("users-list");
   const usersSection = document.getElementById("users-section");
   const leaveSection = document.getElementById("leave-budget-section");
+  const switchSection = document.getElementById("switch-budget-section");
   list.innerHTML = "";
   try {
     const data = await apiPost("/api/users", { initData: tg.initData });
     currentMode = data.mode;
-    const switchButton = document.getElementById("switch-budget");
     if (!data.has_shared) {
-      switchButton.textContent = "Переключить бюджет";
-      switchButton.disabled = true;
+      switchSection.classList.add("hidden");
       usersSection.classList.add("hidden");
       leaveSection.classList.add("hidden");
+      stopUpdatePolling();
       return;
-    } else {
-      switchButton.disabled = false;
-      switchButton.textContent =
-        currentMode === "shared"
-          ? "Переключить на личный"
-          : "Переключить на общий";
-      usersSection.classList.remove("hidden");
-      leaveSection.classList.remove("hidden");
     }
+    switchSection.classList.remove("hidden");
+    usersSection.classList.remove("hidden");
+    leaveSection.classList.remove("hidden");
+    const switchButton = document.getElementById("switch-budget");
+    switchButton.textContent =
+      currentMode === "shared"
+        ? "Переключить на личный"
+        : "Переключить на общий";
     if (!data.users.length) {
       list.innerHTML = "<div class=\"result\">Пока никого нет.</div>";
       return;
@@ -595,6 +609,11 @@ async function loadUsers() {
       }
       list.appendChild(row);
     });
+    if (currentMode === "shared") {
+      startUpdatePolling();
+    } else {
+      stopUpdatePolling();
+    }
   } catch (err) {
     list.innerHTML = `<div class="result">${err.message}</div>`;
   }
@@ -741,6 +760,47 @@ function drawStatsChart(data, canvas) {
   const config = { type: "pie", data: chartData };
   if (statsChart) statsChart.destroy();
   statsChart = new Chart(canvas, config);
+}
+
+function startUpdatePolling() {
+  if (updateTimer || currentMode !== "shared") return;
+  updateTimer = setInterval(async () => {
+    if (!ensureTelegram()) return;
+    try {
+      const data = await apiPost("/api/updates", {
+        initData: tg.initData,
+        since: lastUpdateAt,
+      });
+      if (data.items.length) {
+        const last = data.items[data.items.length - 1];
+        lastUpdateAt = last.created_at;
+        if (last.added_by && last.added_by !== currentDisplayName) {
+          showToast(
+            `${last.added_by} добавил(а) ${
+              last.t_type === "income" ? "доход" : "расход"
+            } ${formatMoney(last.amount)}`
+          );
+          const fresh = await apiPost("/api/init", { initData: tg.initData });
+          balanceEl.textContent = formatMoney(fresh.balance);
+        }
+      }
+    } catch (_err) {
+      // ignore polling errors
+    }
+  }, 7000);
+}
+
+function stopUpdatePolling() {
+  if (updateTimer) {
+    clearInterval(updateTimer);
+    updateTimer = null;
+  }
+}
+
+function showToast(message) {
+  toast.textContent = message;
+  toast.classList.remove("hidden");
+  setTimeout(() => toast.classList.add("hidden"), 2500);
 }
 
 showPanel("home");

@@ -275,6 +275,26 @@ def list_transactions(
         return list(cur.fetchall())
 
 
+def list_updates(
+    telegram_id: int, since: str | None, limit: int = 20
+) -> list[tuple[str, float, str, str, str]]:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        query = """
+            SELECT t_type, amount, description, COALESCE(added_by, ''), created_at
+            FROM transactions
+            WHERE budget_id = ?
+        """
+        params: list = [budget_id]
+        if since:
+            query += " AND created_at > ?"
+            params.append(since)
+        query += " ORDER BY id ASC LIMIT ?"
+        params.append(limit)
+        cur = conn.execute(query, tuple(params))
+        return list(cur.fetchall())
+
+
 def update_transaction(
     telegram_id: int,
     transaction_id: int,
@@ -643,6 +663,8 @@ def switch_budget(telegram_id: int, mode: str) -> bool:
         personal_budget_id, shared_budget_id = row
         if mode == "personal":
             if personal_budget_id is None:
+                personal_budget_id = _create_budget(conn, telegram_id)
+            if shared_budget_id and personal_budget_id == shared_budget_id:
                 personal_budget_id = _create_budget(conn, telegram_id)
             conn.execute(
                 "UPDATE users SET budget_id = ?, personal_budget_id = ? WHERE telegram_id = ?",

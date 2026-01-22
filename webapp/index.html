@@ -104,7 +104,7 @@
         <div class="chart-controls">
           <input id="stats-start" type="date" />
           <input id="stats-end" type="date" />
-          <button id="stats-apply">Показать</button>
+          <button id="stats-apply" class="full">Показать</button>
         </div>
         <div class="result" id="stats-result"></div>
         <canvas id="stats-chart-canvas" height="240"></canvas>
@@ -133,7 +133,7 @@
           <input id="join-code" type="text" maxlength="16" placeholder="Код приглашения" />
           <button id="join-submit">Присоединиться</button>
         </div>
-        <div class="form">
+        <div class="form" id="switch-budget-section">
           <button id="switch-budget">Переключить бюджет</button>
         </div>
         <div class="form" id="leave-budget-section">
@@ -168,6 +168,7 @@
         <p id="error-message"></p>
       </section>
     </main>
+    <div class="toast hidden" id="toast"></div>
     <button class="fab gear" id="settings-open" aria-label="Настройки">⚙</button>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="app.js"></script>

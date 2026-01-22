@@ -21,6 +21,7 @@ from db import (
     init_db,
     leave_budget,
     remove_user_from_budget,
+    ensure_category,
     use_invite,
 )
 
@@ -117,6 +118,8 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     display_name = f"@{user.username}" if user.username else user.full_name
     get_or_create_user(user.id, display_name)
     text = update.message.text.strip()
+    if await try_parse_quick_entry(update, context, text, display_name):
+        return
     if text == "Доходы":
         await update.message.reply_text("Выберите действие:", reply_markup=INCOME_MENU)
         return
@@ -151,6 +154,48 @@ async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await show_period_summary(update, context, "expense", period)
         return
     await update.message.reply_text("Не понял команду.", reply_markup=MAIN_MENU)
+
+
+async def try_parse_quick_entry(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str,
+    display_name: str,
+) -> bool:
+    if not text or text[0] not in {"+", "-"}:
+        return False
+    parts = text.split()
+    if not parts:
+        return False
+    raw_amount = parts[0][1:].replace(",", ".")
+    try:
+        amount = float(raw_amount)
+    except ValueError:
+        return False
+    t_type = "income" if text[0] == "+" else "expense"
+    description = ""
+    category = ""
+    if len(parts) == 2:
+        description = parts[1]
+    elif len(parts) >= 3:
+        description = " ".join(parts[1:-1])
+        category = parts[-1]
+    if category:
+        ensure_category(update.effective_user.id, t_type, category)
+    add_transaction(
+        update.effective_user.id,
+        t_type,
+        amount,
+        description,
+        display_name,
+        category or None,
+    )
+    label = "Доход" if t_type == "income" else "Расход"
+    await update.message.reply_text(
+        f"{label} добавлен: {amount:.2f}", reply_markup=MAIN_MENU
+    )
+    await show_main_menu(update, context)
+    return True
 
 
 def period_to_days(period: str) -> int | None:

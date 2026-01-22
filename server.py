@@ -37,6 +37,7 @@ from db import (
     update_category,
     delete_category,
     ensure_category,
+    list_updates,
 )
 
 
@@ -136,6 +137,10 @@ class SummaryRangePayload(InitPayload):
     end: str | None = None
 
 
+class UpdatesPayload(InitPayload):
+    since: str | None = None
+
+
 def _verify_init_data(init_data: str) -> dict:
     if not BOT_TOKEN:
         raise HTTPException(status_code=500, detail="Missing TELEGRAM_API_KEY")
@@ -204,6 +209,7 @@ def api_init(payload: InitPayload) -> dict:
     active_budget, personal_budget, shared_budget = get_budget_state(telegram_id)
     return {
         "telegram_id": telegram_id,
+        "display_name": display_name,
         "balance": balance,
         "is_owner": owner_id == telegram_id,
         "mode": "shared" if shared_budget and active_budget == shared_budget else "personal",
@@ -593,3 +599,23 @@ def api_summary_range(payload: SummaryRangePayload) -> dict:
     )
     total = sum(row[1] for row in rows)
     return {"total": total, "count": len(rows)}
+
+
+@app.post("/api/updates")
+def api_updates(payload: UpdatesPayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    rows = list_updates(telegram_id, payload.since, limit=20)
+    items = [
+        {
+            "t_type": t_type,
+            "amount": amount,
+            "description": description,
+            "added_by": added_by,
+            "created_at": created_at,
+        }
+        for t_type, amount, description, added_by, created_at in rows
+    ]
+    return {"items": items}

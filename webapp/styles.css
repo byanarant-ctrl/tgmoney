@@ -22,6 +22,7 @@ body {
   color: var(--ink);
   background: var(--bg);
   font-weight: 500;
+  touch-action: manipulation;
 }
 
 .bg {

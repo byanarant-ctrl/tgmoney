@@ -30,6 +30,8 @@ let currentUserId = null;
 let currentDisplayName = null;
 let lastUpdateAt = null;
 let updateTimer = null;
+let incomeSubmitting = false;
+let expenseSubmitting = false;
 
 function showPanel(name) {
   Object.values(panels).forEach((panel) => panel.classList.add("hidden"));
@@ -121,6 +123,7 @@ settingsButton.addEventListener("click", () => {
 
 document.getElementById("income-add").addEventListener("click", async () => {
   if (!ensureTelegram()) return;
+  if (incomeSubmitting) return;
   const amount = parseFloat(
     document.getElementById("income-amount").value.replace(",", ".")
   );
@@ -133,6 +136,10 @@ document.getElementById("income-add").addEventListener("click", async () => {
     result.textContent = "Введите сумму.";
     return;
   }
+  incomeSubmitting = true;
+  const incomeBtn = document.getElementById("income-add");
+  incomeBtn.disabled = true;
+  incomeBtn.textContent = "Сохраняю...";
   try {
     const data = await apiPost("/api/transaction", {
       initData: tg.initData,
@@ -151,11 +158,16 @@ document.getElementById("income-add").addEventListener("click", async () => {
     await loadTransactions("income");
   } catch (err) {
     result.textContent = err.message;
+  } finally {
+    incomeSubmitting = false;
+    incomeBtn.disabled = false;
+    incomeBtn.textContent = "Добавить доход";
   }
 });
 
 document.getElementById("expense-add").addEventListener("click", async () => {
   if (!ensureTelegram()) return;
+  if (expenseSubmitting) return;
   const amount = parseFloat(
     document.getElementById("expense-amount").value.replace(",", ".")
   );
@@ -168,6 +180,10 @@ document.getElementById("expense-add").addEventListener("click", async () => {
     result.textContent = "Введите сумму.";
     return;
   }
+  expenseSubmitting = true;
+  const expenseBtn = document.getElementById("expense-add");
+  expenseBtn.disabled = true;
+  expenseBtn.textContent = "Сохраняю...";
   try {
     const data = await apiPost("/api/transaction", {
       initData: tg.initData,
@@ -186,6 +202,10 @@ document.getElementById("expense-add").addEventListener("click", async () => {
     await loadTransactions("expense");
   } catch (err) {
     result.textContent = err.message;
+  } finally {
+    expenseSubmitting = false;
+    expenseBtn.disabled = false;
+    expenseBtn.textContent = "Добавить расход";
   }
 });
 

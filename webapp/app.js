@@ -5,29 +5,30 @@ const panels = {
   income: document.getElementById("panel-income"),
   expense: document.getElementById("panel-expense"),
   plans: document.getElementById("panel-plans"),
-  invite: document.getElementById("panel-invite"),
   planCreate: document.getElementById("panel-plan-create"),
+  planDetail: document.getElementById("panel-plan-detail"),
+  settings: document.getElementById("panel-settings"),
   error: document.getElementById("panel-error"),
 };
 
 const balanceEl = document.getElementById("balance");
 const homeSections = [
   document.querySelector(".main-actions"),
-  document.querySelector(".quick-actions"),
-  document.querySelector(".plans"),
 ];
-const fab = document.getElementById("plan-add");
+const settingsButton = document.getElementById("settings-open");
+let currentPlanId = null;
+let currentMode = "personal";
 const errorMessage = document.getElementById("error-message");
 
 function showPanel(name) {
   Object.values(panels).forEach((panel) => panel.classList.add("hidden"));
   if (name === "home") {
     homeSections.forEach((section) => section.classList.remove("hidden"));
-    fab.classList.remove("hidden");
+    settingsButton.classList.remove("hidden");
     return;
   }
   homeSections.forEach((section) => section.classList.add("hidden"));
-  fab.classList.add("hidden");
+  settingsButton.classList.add("hidden");
   if (panels[name]) panels[name].classList.remove("hidden");
 }
 
@@ -69,7 +70,9 @@ async function init() {
     if (data.is_owner) {
       kickForm.classList.remove("hidden");
     }
+    currentMode = data.mode;
     await loadPlans();
+    await loadUsers();
   } catch (err) {
     errorMessage.textContent = err.message;
     showPanel("error");
@@ -91,11 +94,15 @@ document.querySelectorAll("[data-target]").forEach((btn) => {
     if (btn.dataset.target === "expense") {
       loadTransactions("expense");
     }
+    if (btn.dataset.target === "plans") {
+      loadPlans();
+    }
   });
 });
 
-fab.addEventListener("click", () => {
-  showPanel("planCreate");
+settingsButton.addEventListener("click", () => {
+  showPanel("settings");
+  loadUsers();
 });
 
 document.getElementById("income-add").addEventListener("click", async () => {
@@ -118,6 +125,8 @@ document.getElementById("income-add").addEventListener("click", async () => {
     });
     balanceEl.textContent = formatMoney(data.balance);
     result.textContent = "Доход добавлен.";
+    document.getElementById("income-amount").value = "";
+    document.getElementById("income-desc").value = "";
     await loadTransactions("income");
   } catch (err) {
     result.textContent = err.message;
@@ -144,6 +153,8 @@ document.getElementById("expense-add").addEventListener("click", async () => {
     });
     balanceEl.textContent = formatMoney(data.balance);
     result.textContent = "Расход добавлен.";
+    document.getElementById("expense-amount").value = "";
+    document.getElementById("expense-desc").value = "";
     await loadTransactions("expense");
   } catch (err) {
     result.textContent = err.message;
@@ -188,7 +199,7 @@ document.getElementById("invite-create").addEventListener("click", async () => {
 document.getElementById("join-submit").addEventListener("click", async () => {
   if (!ensureTelegram()) return;
   const code = document.getElementById("join-code").value.trim();
-  const out = document.getElementById("invite-result");
+  const out = document.getElementById("settings-result");
   if (!code) {
     out.textContent = "Введите код приглашения.";
     return;
@@ -197,19 +208,8 @@ document.getElementById("join-submit").addEventListener("click", async () => {
     const data = await apiPost("/api/join", { initData: tg.initData, code });
     balanceEl.textContent = formatMoney(data.balance);
     out.textContent = "Бюджет объединен.";
-  } catch (err) {
-    out.textContent = err.message;
-  }
-});
-
-document.getElementById("leave-budget").addEventListener("click", async () => {
-  if (!ensureTelegram()) return;
-  const out = document.getElementById("invite-result");
-  try {
-    const data = await apiPost("/api/leave", { initData: tg.initData });
-    balanceEl.textContent = formatMoney(data.balance);
-    out.textContent = "Вы вышли из общего бюджета.";
-    await loadPlans();
+    document.getElementById("join-code").value = "";
+    await loadUsers();
   } catch (err) {
     out.textContent = err.message;
   }
@@ -218,7 +218,7 @@ document.getElementById("leave-budget").addEventListener("click", async () => {
 document.getElementById("kick-submit").addEventListener("click", async () => {
   if (!ensureTelegram()) return;
   const targetId = parseInt(document.getElementById("kick-id").value, 10);
-  const out = document.getElementById("invite-result");
+  const out = document.getElementById("settings-result");
   if (!targetId) {
     out.textContent = "Введите Telegram ID.";
     return;
@@ -226,6 +226,8 @@ document.getElementById("kick-submit").addEventListener("click", async () => {
   try {
     await apiPost("/api/kick", { initData: tg.initData, target_id: targetId });
     out.textContent = "Пользователь удален из бюджета.";
+    document.getElementById("kick-id").value = "";
+    await loadUsers();
   } catch (err) {
     out.textContent = err.message;
   }
@@ -255,8 +257,89 @@ document.getElementById("plan-save").addEventListener("click", async () => {
       target_amount: targetAmount,
     });
     out.textContent = "План сохранен.";
+    document.getElementById("plan-title").value = "";
+    document.getElementById("plan-desc").value = "";
+    document.getElementById("plan-amount").value = "";
     await loadPlans();
-    showPanel("home");
+    showPanel("plans");
+  } catch (err) {
+    out.textContent = err.message;
+  }
+});
+
+document.getElementById("plan-add-open").addEventListener("click", () => {
+  showPanel("planCreate");
+});
+
+document.getElementById("plan-edit-save").addEventListener("click", async () => {
+  if (!ensureTelegram() || !currentPlanId) return;
+  const title = document.getElementById("plan-edit-title").value.trim();
+  const description = document.getElementById("plan-edit-desc").value.trim();
+  const targetAmount = parseFloat(
+    document.getElementById("plan-edit-target").value.replace(",", ".")
+  );
+  const out = document.getElementById("plan-edit-result");
+  if (!title) {
+    out.textContent = "Введите название.";
+    return;
+  }
+  if (!targetAmount || Number.isNaN(targetAmount)) {
+    out.textContent = "Введите сумму.";
+    return;
+  }
+  try {
+    await apiPost("/api/plan/update", {
+      initData: tg.initData,
+      plan_id: currentPlanId,
+      title,
+      description,
+      target_amount: targetAmount,
+    });
+    out.textContent = "План обновлен.";
+    await loadPlans();
+  } catch (err) {
+    out.textContent = err.message;
+  }
+});
+
+document.getElementById("plan-deposit").addEventListener("click", async () => {
+  if (!ensureTelegram() || !currentPlanId) return;
+  const amount = parseFloat(
+    document.getElementById("plan-deposit-amount").value.replace(",", ".")
+  );
+  const out = document.getElementById("plan-edit-result");
+  if (!amount || Number.isNaN(amount)) {
+    out.textContent = "Введите сумму.";
+    return;
+  }
+  try {
+    await apiPost("/api/plan/deposit", {
+      initData: tg.initData,
+      plan_id: currentPlanId,
+      amount,
+    });
+    out.textContent = "Баланс плана пополнен.";
+    document.getElementById("plan-deposit-amount").value = "";
+    await loadPlanDetail(currentPlanId);
+    await loadPlans();
+  } catch (err) {
+    out.textContent = err.message;
+  }
+});
+
+document.getElementById("switch-budget").addEventListener("click", async () => {
+  if (!ensureTelegram()) return;
+  const out = document.getElementById("settings-result");
+  const nextMode = currentMode === "shared" ? "personal" : "shared";
+  try {
+    const data = await apiPost("/api/budget/switch", {
+      initData: tg.initData,
+      mode: nextMode,
+    });
+    currentMode = nextMode;
+    balanceEl.textContent = formatMoney(data.balance);
+    out.textContent = `Активен бюджет: ${currentMode}`;
+    await loadUsers();
   } catch (err) {
     out.textContent = err.message;
   }
@@ -275,15 +358,41 @@ async function loadPlans() {
     data.items.forEach((plan) => {
       const card = document.createElement("div");
       card.className = "plan-card";
+      card.dataset.planId = plan.id;
       card.innerHTML = `
         <h4>${plan.title}</h4>
         <div>${plan.description || ""}</div>
-        <div class="plan-meta">Цель: ${formatMoney(plan.target_amount)} · ${plan.created_by}</div>
+        <div class="plan-meta">Цель: ${formatMoney(plan.target_amount)}</div>
+        <div class="plan-meta">Накоплено: ${formatMoney(plan.current_amount)} · ${plan.created_by}</div>
       `;
+      card.addEventListener("click", () => {
+        loadPlanDetail(plan.id);
+      });
       list.appendChild(card);
     });
   } catch (err) {
     list.innerHTML = `<div class="result">${err.message}</div>`;
+  }
+}
+
+async function loadPlanDetail(planId) {
+  if (!ensureTelegram()) return;
+  currentPlanId = planId;
+  const out = document.getElementById("plan-edit-result");
+  const current = document.getElementById("plan-current");
+  out.textContent = "";
+  try {
+    const data = await apiPost("/api/plan/get", {
+      initData: tg.initData,
+      plan_id: planId,
+    });
+    document.getElementById("plan-edit-title").value = data.title;
+    document.getElementById("plan-edit-desc").value = data.description;
+    document.getElementById("plan-edit-target").value = data.target_amount;
+    current.textContent = `Накоплено: ${formatMoney(data.current_amount)}`;
+    showPanel("planDetail");
+  } catch (err) {
+    out.textContent = err.message;
   }
 }
 
@@ -309,6 +418,42 @@ async function loadTransactions(tType) {
       row.innerHTML = `
         <span><strong>${formatMoney(item.amount)}</strong> · ${item.description || "Без описания"}</span>
         <span>${item.added_by || "—"}</span>
+      `;
+      list.appendChild(row);
+    });
+  } catch (err) {
+    list.innerHTML = `<div class="result">${err.message}</div>`;
+  }
+}
+
+async function loadUsers() {
+  if (!ensureTelegram()) return;
+  const list = document.getElementById("users-list");
+  list.innerHTML = "";
+  try {
+    const data = await apiPost("/api/users", { initData: tg.initData });
+    currentMode = data.mode;
+    const switchButton = document.getElementById("switch-budget");
+    if (!data.has_shared) {
+      switchButton.textContent = "Нет общего бюджета";
+      switchButton.disabled = true;
+    } else {
+      switchButton.disabled = false;
+      switchButton.textContent =
+        currentMode === "shared"
+          ? "Переключить на личный"
+          : "Переключить на общий";
+    }
+    if (!data.users.length) {
+      list.innerHTML = "<div class=\"result\">Пока никого нет.</div>";
+      return;
+    }
+    data.users.forEach((user) => {
+      const row = document.createElement("div");
+      row.className = "list-item";
+      row.innerHTML = `
+        <span><strong>${user.display_name || "Без имени"}</strong></span>
+        <span>${user.telegram_id}</span>
       `;
       list.appendChild(row);
     });

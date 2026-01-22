@@ -26,18 +26,11 @@
         <button class="pill expense" data-target="expense">
           - Расходы
         </button>
+        <button class="pill plans" data-target="plans">
+          Планы
+        </button>
       </section>
 
-      <section class="quick-actions">
-        <button class="ghost" data-target="invite">Пригласить</button>
-      </section>
-
-      <section class="plans">
-        <div class="plans-header">
-          <h3>Планы</h3>
-        </div>
-        <div id="plans-list" class="plans-list"></div>
-      </section>
 
       <section class="panel hidden" id="panel-income">
         <h2>Доходы</h2>
@@ -75,28 +68,8 @@
 
       <section class="panel hidden" id="panel-plans">
         <h2>Планы</h2>
-        <p>Этот раздел теперь доступен на главном экране.</p>
-        <button class="back">Назад</button>
-      </section>
-
-      <section class="panel hidden" id="panel-invite">
-        <h2>Пригласить</h2>
-        <div class="form">
-          <button id="invite-create">Создать код</button>
-          <div class="result" id="invite-code"></div>
-        </div>
-        <div class="form">
-          <input id="join-code" type="text" maxlength="16" placeholder="Код приглашения" />
-          <button id="join-submit">Присоединиться</button>
-        </div>
-        <div class="form">
-          <button id="leave-budget">Выйти из общего бюджета</button>
-        </div>
-        <div class="form hidden" id="kick-form">
-          <input id="kick-id" type="number" placeholder="Telegram ID" />
-          <button id="kick-submit">Удалить пользователя</button>
-        </div>
-        <div class="result" id="invite-result"></div>
+        <button id="plan-add-open">Добавить план</button>
+        <div id="plans-list" class="plans-list"></div>
         <button class="back">Назад</button>
       </section>
 
@@ -112,12 +85,54 @@
         <button class="back">Назад</button>
       </section>
 
+      <section class="panel hidden" id="panel-plan-detail">
+        <h2>План</h2>
+        <div class="result" id="plan-current"></div>
+        <div class="form">
+          <input id="plan-edit-title" type="text" maxlength="80" placeholder="Название" />
+          <input id="plan-edit-desc" type="text" maxlength="140" placeholder="Описание" />
+          <input id="plan-edit-target" type="number" min="0" step="0.01" placeholder="Сумма цели" />
+          <button id="plan-edit-save">Сохранить изменения</button>
+        </div>
+        <div class="form">
+          <input id="plan-deposit-amount" type="number" min="0" step="0.01" placeholder="Пополнить" />
+          <button id="plan-deposit">Пополнить план</button>
+        </div>
+        <div class="result" id="plan-edit-result"></div>
+        <button class="back">Назад</button>
+      </section>
+
+      <section class="panel hidden" id="panel-settings">
+        <h2>Настройки</h2>
+        <div class="form">
+          <button id="invite-create">Создать код приглашения</button>
+          <div class="result" id="invite-code"></div>
+        </div>
+        <div class="form">
+          <input id="join-code" type="text" maxlength="16" placeholder="Код приглашения" />
+          <button id="join-submit">Присоединиться</button>
+        </div>
+        <div class="form">
+          <button id="switch-budget">Переключить бюджет</button>
+        </div>
+        <div class="form">
+          <div class="result">Пользователи общего бюджета:</div>
+          <div id="users-list" class="list"></div>
+        </div>
+        <div class="form hidden" id="kick-form">
+          <input id="kick-id" type="number" placeholder="Telegram ID" />
+          <button id="kick-submit">Удалить пользователя</button>
+        </div>
+        <div class="result" id="settings-result"></div>
+        <button class="back">Назад</button>
+      </section>
+
       <section class="panel hidden" id="panel-error">
         <h2>Ошибка</h2>
         <p id="error-message"></p>
       </section>
     </main>
-    <button class="fab" id="plan-add" aria-label="Добавить план">+</button>
+    <button class="fab gear" id="settings-open" aria-label="Настройки">⚙</button>
     <script src="app.js"></script>
   </body>
 </html>

@@ -21,6 +21,7 @@ body {
   font-family: "IBM Plex Sans", sans-serif;
   color: var(--ink);
   background: var(--bg);
+  font-weight: 500;
 }
 
 .bg {
@@ -87,6 +88,10 @@ body {
 
 .pill.expense {
   background: linear-gradient(140deg, #f2e5d6, #d2b6a1);
+}
+
+.pill.plans {
+  background: linear-gradient(140deg, #f6efe6, #d8c7b3);
 }
 
 .quick-actions {
@@ -170,17 +175,8 @@ button:active {
   min-height: 18px;
 }
 
-.plans {
-  margin-top: 26px;
-}
-
-.plans-header h3 {
-  font-family: "Unbounded", sans-serif;
-  font-size: 18px;
-  margin-bottom: 12px;
-}
-
 .plans-list {
+  margin-top: 14px;
   display: grid;
   gap: 10px;
 }
@@ -248,6 +244,10 @@ button:active {
   align-items: center;
   justify-content: center;
   box-shadow: var(--shadow);
+}
+
+.gear {
+  font-size: 22px;
 }
 
 @keyframes rise {

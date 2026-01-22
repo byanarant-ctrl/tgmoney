@@ -59,12 +59,16 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    get_or_create_user(update.effective_user.id)
+    user = update.effective_user
+    display_name = f"@{user.username}" if user.username else user.full_name
+    get_or_create_user(user.id, display_name)
     await show_main_menu(update, context)
 
 
 async def join(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    get_or_create_user(update.effective_user.id)
+    user = update.effective_user
+    display_name = f"@{user.username}" if user.username else user.full_name
+    get_or_create_user(user.id, display_name)
     if not context.args:
         await update.message.reply_text("Использование: /join КОД")
         return
@@ -109,7 +113,9 @@ async def kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    get_or_create_user(update.effective_user.id)
+    user = update.effective_user
+    display_name = f"@{user.username}" if user.username else user.full_name
+    get_or_create_user(user.id, display_name)
     text = update.message.text.strip()
     if text == "Доходы":
         await update.message.reply_text("Выберите действие:", reply_markup=INCOME_MENU)
@@ -168,7 +174,9 @@ async def show_period_summary(
 
 
 async def add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    get_or_create_user(update.effective_user.id)
+    user = update.effective_user
+    display_name = f"@{user.username}" if user.username else user.full_name
+    get_or_create_user(user.id, display_name)
     text = update.message.text.strip()
     if text == "Добавить доход":
         context.user_data["pending_type"] = "income"
@@ -202,7 +210,9 @@ async def add_description(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not t_type or amount is None:
         await update.message.reply_text("Что-то пошло не так.", reply_markup=MAIN_MENU)
         return ConversationHandler.END
-    add_transaction(update.effective_user.id, t_type, amount, description)
+    user = update.effective_user
+    display_name = f"@{user.username}" if user.username else user.full_name
+    add_transaction(user.id, t_type, amount, description, display_name)
     when = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     await update.message.reply_text(
         f"Запись добавлена ({when}).", reply_markup=MAIN_MENU

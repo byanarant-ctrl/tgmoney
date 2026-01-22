@@ -13,13 +13,19 @@ from db import (
     add_plan,
     create_invite,
     get_budget_owner_id,
+    get_budget_state,
     get_budget_summary,
     get_or_create_user,
     get_period_summary,
     get_recent_transactions,
+    get_plan,
+    get_budget_users,
+    switch_budget,
     leave_budget,
     list_plans,
     remove_user_from_budget,
+    update_plan,
+    deposit_plan,
     use_invite,
     init_db,
 )
@@ -55,6 +61,26 @@ class PlanPayload(InitPayload):
     title: str
     description: str
     target_amount: float
+
+
+class PlanUpdatePayload(InitPayload):
+    plan_id: int
+    title: str
+    description: str
+    target_amount: float
+
+
+class PlanDepositPayload(InitPayload):
+    plan_id: int
+    amount: float
+
+
+class PlanGetPayload(InitPayload):
+    plan_id: int
+
+
+class BudgetSwitchPayload(InitPayload):
+    mode: str
 
 
 def _verify_init_data(init_data: str) -> dict:
@@ -122,10 +148,13 @@ def api_init(payload: InitPayload) -> dict:
     get_or_create_user(telegram_id, display_name)
     balance = get_budget_summary(telegram_id)
     owner_id = get_budget_owner_id(telegram_id)
+    active_budget, personal_budget, shared_budget = get_budget_state(telegram_id)
     return {
         "telegram_id": telegram_id,
         "balance": balance,
         "is_owner": owner_id == telegram_id,
+        "mode": "shared" if shared_budget and active_budget == shared_budget else "personal",
+        "has_shared": bool(shared_budget),
     }
 
 
@@ -246,10 +275,11 @@ def api_plans(payload: InitPayload) -> dict:
             "title": title,
             "description": description,
             "target_amount": target_amount,
+            "current_amount": current_amount,
             "created_by": created_by,
             "created_at": created_at,
         }
-        for plan_id, title, description, target_amount, created_by, created_at in rows
+        for plan_id, title, description, target_amount, current_amount, created_by, created_at in rows
     ]
     return {"items": items}
 
@@ -268,3 +298,90 @@ def api_plan_create(payload: PlanPayload) -> dict:
         raise HTTPException(status_code=400, detail="Amount must be positive")
     add_plan(telegram_id, title, description, payload.target_amount, display_name)
     return {"ok": True}
+
+
+@app.post("/api/plan/get")
+def api_plan_get(payload: PlanGetPayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    row = get_plan(telegram_id, payload.plan_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    plan_id, title, description, target_amount, current_amount, created_by, created_at = row
+    return {
+        "id": plan_id,
+        "title": title,
+        "description": description,
+        "target_amount": target_amount,
+        "current_amount": current_amount,
+        "created_by": created_by,
+        "created_at": created_at,
+    }
+
+
+@app.post("/api/plan/update")
+def api_plan_update(payload: PlanUpdatePayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    if payload.target_amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+    ok = update_plan(
+        telegram_id,
+        payload.plan_id,
+        payload.title.strip(),
+        payload.description.strip(),
+        payload.target_amount,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
+
+
+@app.post("/api/plan/deposit")
+def api_plan_deposit(payload: PlanDepositPayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    if payload.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+    ok = deposit_plan(telegram_id, payload.plan_id, payload.amount)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
+
+
+@app.post("/api/users")
+def api_users(payload: InitPayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    active_budget, personal_budget, shared_budget = get_budget_state(telegram_id)
+    items = []
+    if shared_budget:
+        rows = get_budget_users(telegram_id, use_shared=True)
+        items = [{"telegram_id": uid, "display_name": name} for uid, name in rows]
+    return {
+        "users": items,
+        "mode": "shared" if shared_budget and active_budget == shared_budget else "personal",
+        "has_shared": bool(shared_budget),
+    }
+
+
+@app.post("/api/budget/switch")
+def api_budget_switch(payload: BudgetSwitchPayload) -> dict:
+    user = _verify_init_data(payload.initData)
+    telegram_id = int(user["id"])
+    display_name = _display_name(user)
+    get_or_create_user(telegram_id, display_name)
+    mode = payload.mode.strip().lower()
+    ok = switch_budget(telegram_id, mode)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Not allowed")
+    balance = get_budget_summary(telegram_id)
+    return {"ok": True, "balance": balance}

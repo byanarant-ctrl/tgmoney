@@ -28,6 +28,8 @@ def init_db() -> None:
                 telegram_id INTEGER PRIMARY KEY,
                 budget_id INTEGER NOT NULL,
                 display_name TEXT,
+                personal_budget_id INTEGER,
+                shared_budget_id INTEGER,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(budget_id) REFERENCES budgets(id)
             )
@@ -55,6 +57,7 @@ def init_db() -> None:
                 title TEXT NOT NULL,
                 description TEXT NOT NULL,
                 target_amount REAL NOT NULL,
+                current_amount REAL NOT NULL,
                 created_by TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(budget_id) REFERENCES budgets(id)
@@ -79,9 +82,16 @@ def init_db() -> None:
         user_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
         if "display_name" not in user_cols:
             conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
+        if "personal_budget_id" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN personal_budget_id INTEGER")
+        if "shared_budget_id" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN shared_budget_id INTEGER")
         tx_cols = {row[1] for row in conn.execute("PRAGMA table_info(transactions)")}
         if "added_by" not in tx_cols:
             conn.execute("ALTER TABLE transactions ADD COLUMN added_by TEXT")
+        plan_cols = {row[1] for row in conn.execute("PRAGMA table_info(plans)")}
+        if "current_amount" not in plan_cols:
+            conn.execute("ALTER TABLE plans ADD COLUMN current_amount REAL NOT NULL DEFAULT 0")
 
         conn.execute(
             """
@@ -109,7 +119,8 @@ def _create_budget(conn: sqlite3.Connection, owner_id: int) -> int:
 def get_or_create_user(telegram_id: int, display_name: str | None = None) -> None:
     with _connect() as conn:
         cur = conn.execute(
-            "SELECT budget_id FROM users WHERE telegram_id = ?", (telegram_id,)
+            "SELECT budget_id, personal_budget_id FROM users WHERE telegram_id = ?",
+            (telegram_id,),
         )
         row = cur.fetchone()
         if row:
@@ -118,14 +129,22 @@ def get_or_create_user(telegram_id: int, display_name: str | None = None) -> Non
                     "UPDATE users SET display_name = ? WHERE telegram_id = ?",
                     (display_name, telegram_id),
                 )
+            budget_id, personal_budget_id = row
+            if personal_budget_id is None:
+                conn.execute(
+                    "UPDATE users SET personal_budget_id = ? WHERE telegram_id = ?",
+                    (budget_id, telegram_id),
+                )
             return
         budget_id = _create_budget(conn, telegram_id)
         conn.execute(
             """
-            INSERT INTO users (telegram_id, budget_id, display_name, created_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO users (
+                telegram_id, budget_id, display_name, personal_budget_id, created_at
+            )
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (telegram_id, budget_id, display_name, _now()),
+            (telegram_id, budget_id, display_name, budget_id, _now()),
         )
 
 
@@ -216,6 +235,14 @@ def _generate_code(length: int = 8) -> str:
 def create_invite(telegram_id: int) -> str:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
+        conn.execute(
+            """
+            UPDATE users
+            SET shared_budget_id = ?
+            WHERE telegram_id = ? AND shared_budget_id IS NULL
+            """,
+            (budget_id, telegram_id),
+        )
         while True:
             code = _generate_code()
             try:
@@ -240,8 +267,8 @@ def use_invite(telegram_id: int, code: str) -> bool:
         if used_by is not None:
             return False
         conn.execute(
-            "UPDATE users SET budget_id = ? WHERE telegram_id = ?",
-            (budget_id, telegram_id),
+            "UPDATE users SET budget_id = ?, shared_budget_id = ? WHERE telegram_id = ?",
+            (budget_id, budget_id, telegram_id),
         )
         conn.execute(
             "UPDATE invites SET used_by = ?, used_at = ? WHERE code = ?",
@@ -253,15 +280,22 @@ def use_invite(telegram_id: int, code: str) -> bool:
 def leave_budget(telegram_id: int) -> None:
     with _connect() as conn:
         cur = conn.execute(
-            "SELECT budget_id FROM users WHERE telegram_id = ?", (telegram_id,)
+            "SELECT personal_budget_id FROM users WHERE telegram_id = ?",
+            (telegram_id,),
         )
         row = cur.fetchone()
         if not row:
             return
-        new_budget_id = _create_budget(conn, telegram_id)
+        personal_budget_id = row[0]
+        if personal_budget_id is None:
+            personal_budget_id = _create_budget(conn, telegram_id)
         conn.execute(
-            "UPDATE users SET budget_id = ? WHERE telegram_id = ?",
-            (new_budget_id, telegram_id),
+            """
+            UPDATE users
+            SET budget_id = ?, personal_budget_id = ?, shared_budget_id = NULL
+            WHERE telegram_id = ?
+            """,
+            (personal_budget_id, personal_budget_id, telegram_id),
         )
 
 
@@ -283,20 +317,35 @@ def add_plan(
         conn.execute(
             """
             INSERT INTO plans (
-                budget_id, title, description, target_amount, created_by, created_at
+                budget_id,
+                title,
+                description,
+                target_amount,
+                current_amount,
+                created_by,
+                created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (budget_id, title, description, target_amount, created_by, _now()),
+            (budget_id, title, description, target_amount, 0.0, created_by, _now()),
         )
 
 
-def list_plans(telegram_id: int) -> list[tuple[int, str, str, float, str, str]]:
+def list_plans(
+    telegram_id: int,
+) -> list[tuple[int, str, str, float, float, str, str]]:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
         cur = conn.execute(
             """
-            SELECT id, title, description, target_amount, COALESCE(created_by, ''), created_at
+            SELECT
+                id,
+                title,
+                description,
+                target_amount,
+                current_amount,
+                COALESCE(created_by, ''),
+                created_at
             FROM plans
             WHERE budget_id = ?
             ORDER BY id DESC
@@ -304,6 +353,144 @@ def list_plans(telegram_id: int) -> list[tuple[int, str, str, float, str, str]]:
             (budget_id,),
         )
         return list(cur.fetchall())
+
+
+def get_plan(
+    telegram_id: int, plan_id: int
+) -> tuple[int, str, str, float, float, str, str] | None:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        cur = conn.execute(
+            """
+            SELECT
+                id,
+                title,
+                description,
+                target_amount,
+                current_amount,
+                COALESCE(created_by, ''),
+                created_at
+            FROM plans
+            WHERE budget_id = ? AND id = ?
+            """,
+            (budget_id, plan_id),
+        )
+        return cur.fetchone()
+
+
+def update_plan(
+    telegram_id: int, plan_id: int, title: str, description: str, target_amount: float
+) -> bool:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        cur = conn.execute(
+            """
+            UPDATE plans
+            SET title = ?, description = ?, target_amount = ?
+            WHERE id = ? AND budget_id = ?
+            """,
+            (title, description, target_amount, plan_id, budget_id),
+        )
+        return cur.rowcount > 0
+
+
+def deposit_plan(telegram_id: int, plan_id: int, amount: float) -> bool:
+    with _connect() as conn:
+        budget_id = _get_budget_id(conn, telegram_id)
+        cur = conn.execute(
+            """
+            UPDATE plans
+            SET current_amount = current_amount + ?
+            WHERE id = ? AND budget_id = ?
+            """,
+            (amount, plan_id, budget_id),
+        )
+        return cur.rowcount > 0
+
+
+def get_budget_users(telegram_id: int, use_shared: bool) -> list[tuple[int, str]]:
+    with _connect() as conn:
+        cur = conn.execute(
+            "SELECT personal_budget_id, shared_budget_id FROM users WHERE telegram_id = ?",
+            (telegram_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return []
+        personal_budget_id, shared_budget_id = row
+        budget_id = shared_budget_id if use_shared else personal_budget_id
+        if budget_id is None:
+            return []
+        if use_shared:
+            cur = conn.execute(
+                """
+                SELECT telegram_id, COALESCE(display_name, '')
+                FROM users
+                WHERE shared_budget_id = ?
+                ORDER BY telegram_id ASC
+                """,
+                (budget_id,),
+            )
+            return list(cur.fetchall())
+        cur = conn.execute(
+            """
+            SELECT telegram_id, COALESCE(display_name, '')
+            FROM users
+            WHERE budget_id = ?
+            ORDER BY telegram_id ASC
+            """,
+            (budget_id,),
+        )
+        return list(cur.fetchall())
+
+
+def get_budget_state(telegram_id: int) -> tuple[int | None, int | None, int | None]:
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            SELECT budget_id, personal_budget_id, shared_budget_id
+            FROM users
+            WHERE telegram_id = ?
+            """,
+            (telegram_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None, None, None
+        return row[0], row[1], row[2]
+
+
+def switch_budget(telegram_id: int, mode: str) -> bool:
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            SELECT personal_budget_id, shared_budget_id
+            FROM users
+            WHERE telegram_id = ?
+            """,
+            (telegram_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return False
+        personal_budget_id, shared_budget_id = row
+        if mode == "personal":
+            if personal_budget_id is None:
+                personal_budget_id = _create_budget(conn, telegram_id)
+            conn.execute(
+                "UPDATE users SET budget_id = ?, personal_budget_id = ? WHERE telegram_id = ?",
+                (personal_budget_id, personal_budget_id, telegram_id),
+            )
+            return True
+        if mode == "shared":
+            if shared_budget_id is None:
+                return False
+            conn.execute(
+                "UPDATE users SET budget_id = ? WHERE telegram_id = ?",
+                (shared_budget_id, telegram_id),
+            )
+            return True
+        return False
 
 
 def get_budget_owner_id(telegram_id: int) -> int | None:
@@ -323,9 +510,20 @@ def remove_user_from_budget(owner_id: int, target_telegram_id: int) -> bool:
             return False
         if target_telegram_id == owner_id:
             return False
-        new_budget_id = _create_budget(conn, target_telegram_id)
+        cur = conn.execute(
+            "SELECT personal_budget_id FROM users WHERE telegram_id = ?",
+            (target_telegram_id,),
+        )
+        row = cur.fetchone()
+        personal_budget_id = row[0] if row else None
+        if personal_budget_id is None:
+            personal_budget_id = _create_budget(conn, target_telegram_id)
         conn.execute(
-            "UPDATE users SET budget_id = ? WHERE telegram_id = ?",
-            (new_budget_id, target_telegram_id),
+            """
+            UPDATE users
+            SET budget_id = ?, personal_budget_id = ?, shared_budget_id = NULL
+            WHERE telegram_id = ?
+            """,
+            (personal_budget_id, personal_budget_id, target_telegram_id),
         )
         return True

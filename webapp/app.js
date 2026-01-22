@@ -9,14 +9,15 @@ const panels = {
   planDetail: document.getElementById("panel-plan-detail"),
   settings: document.getElementById("panel-settings"),
   transactionEdit: document.getElementById("panel-transaction-edit"),
+  stats: document.getElementById("panel-stats"),
   error: document.getElementById("panel-error"),
 };
 
 const balanceEl = document.getElementById("balance");
-const homeSections = [
-  document.querySelector(".main-actions"),
-];
+const homeSections = [document.querySelector(".main-actions")];
 const settingsButton = document.getElementById("settings-open");
+const errorMessage = document.getElementById("error-message");
+
 let currentPlanId = null;
 let currentMode = "personal";
 let currentTxId = null;
@@ -25,7 +26,6 @@ let statsType = "expense";
 let statsChart = null;
 let isOwner = false;
 let currentUserId = null;
-const errorMessage = document.getElementById("error-message");
 
 function showPanel(name) {
   Object.values(panels).forEach((panel) => panel.classList.add("hidden"));
@@ -93,18 +93,10 @@ document.querySelectorAll(".back").forEach((btn) => {
 document.querySelectorAll("[data-target]").forEach((btn) => {
   btn.addEventListener("click", () => {
     showPanel(btn.dataset.target);
-    if (btn.dataset.target === "income") {
-      loadTransactions("income");
-    }
-    if (btn.dataset.target === "expense") {
-      loadTransactions("expense");
-    }
-    if (btn.dataset.target === "plans") {
-      loadPlans();
-    }
-    if (btn.dataset.target === "stats") {
-      renderStats();
-    }
+    if (btn.dataset.target === "income") loadTransactions("income");
+    if (btn.dataset.target === "expense") loadTransactions("expense");
+    if (btn.dataset.target === "plans") loadPlans();
+    if (btn.dataset.target === "stats") renderStats();
   });
 });
 
@@ -175,30 +167,6 @@ document.getElementById("expense-add").addEventListener("click", async () => {
   }
 });
 
-document.querySelectorAll("[data-summary]").forEach((btn) => {
-  btn.addEventListener("click", async () => {
-    if (!ensureTelegram()) return;
-    const [t_type, period] = btn.dataset.summary.split(":");
-    const resultEl =
-      t_type === "income"
-        ? document.getElementById("income-result")
-        : document.getElementById("expense-result");
-    try {
-      const data = await apiPost("/api/summary", {
-        initData: tg.initData,
-        t_type,
-        period,
-      });
-      const label = t_type === "income" ? "Доходы" : "Расходы";
-      resultEl.textContent = `${label}: ${formatMoney(
-        data.total
-      )} (записей: ${data.count})`;
-    } catch (err) {
-      resultEl.textContent = err.message;
-    }
-  });
-});
-
 document.getElementById("invite-create").addEventListener("click", async () => {
   if (!ensureTelegram()) return;
   const out = document.getElementById("invite-code");
@@ -241,7 +209,6 @@ document.getElementById("leave-budget").addEventListener("click", async () => {
     out.textContent = err.message;
   }
 });
-
 
 document.getElementById("plan-save").addEventListener("click", async () => {
   if (!ensureTelegram()) return;
@@ -383,6 +350,26 @@ document.getElementById("tx-edit-save").addEventListener("click", async () => {
   }
 });
 
+document.getElementById("stats-income").addEventListener("click", () => {
+  statsType = "income";
+  renderStats();
+});
+
+document.getElementById("stats-expense").addEventListener("click", () => {
+  statsType = "expense";
+  renderStats();
+});
+
+document.getElementById("stats-apply").addEventListener("click", () => {
+  renderStats();
+});
+
+document.querySelectorAll("[data-period]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    renderStats(btn.dataset.period);
+  });
+});
+
 async function loadPlans() {
   if (!ensureTelegram()) return;
   const list = document.getElementById("plans-list");
@@ -406,8 +393,12 @@ async function loadPlans() {
         <h4>${plan.title}</h4>
         <div>${plan.description || ""}</div>
         <div class="plan-meta">Цель: ${formatMoney(plan.target_amount)}</div>
-        <div class="plan-meta">Накоплено: ${formatMoney(plan.current_amount)} · Осталось: ${formatMoney(remaining)}</div>
-        <div class="plan-progress"><span style="width:${progress.toFixed(1)}%"></span></div>
+        <div class="plan-meta">Накоплено: ${formatMoney(
+          plan.current_amount
+        )} · Осталось: ${formatMoney(remaining)}</div>
+        <div class="plan-progress"><span style="width:${progress.toFixed(
+          1
+        )}%"></span></div>
       `;
       card.addEventListener("click", () => {
         loadPlanDetail(plan.id);
@@ -434,7 +425,9 @@ async function loadPlanDetail(planId) {
     document.getElementById("plan-edit-desc").value = data.description;
     document.getElementById("plan-edit-target").value = data.target_amount;
     const remaining = Math.max(data.target_amount - data.current_amount, 0);
-    current.textContent = `Накоплено: ${formatMoney(data.current_amount)} · Осталось: ${formatMoney(remaining)}`;
+    current.textContent = `Накоплено: ${formatMoney(
+      data.current_amount
+    )} · Осталось: ${formatMoney(remaining)}`;
     showPanel("planDetail");
   } catch (err) {
     out.textContent = err.message;
@@ -468,7 +461,9 @@ async function loadTransactions(tType) {
       const row = document.createElement("div");
       row.className = "list-item";
       row.innerHTML = `
-        <span><strong>${formatMoney(item.amount)}</strong> · ${item.description || "Без описания"} · ${item.category || "Без категории"}</span>
+        <span><strong>${formatMoney(item.amount)}</strong> · ${
+          item.description || "Без описания"
+        } · ${item.category || "Без категории"}</span>
         <span>${item.added_by || "—"}</span>
       `;
       row.addEventListener("click", () => {
@@ -513,7 +508,9 @@ async function loadUsers() {
       const row = document.createElement("div");
       row.className = "user-row";
       row.innerHTML = `
-        <span><strong>${user.display_name || "Без имени"}</strong> · ${user.telegram_id}</span>
+        <span><strong>${user.display_name || "Без имени"}</strong> · ${
+          user.telegram_id
+        }</span>
       `;
       if (isOwner && user.telegram_id !== currentUserId) {
         const btn = document.createElement("button");
@@ -540,30 +537,6 @@ async function loadUsers() {
   }
 }
 
-showPanel("home");
-init();
-
-document.getElementById("stats-income").addEventListener("click", () => {
-  statsType = "income";
-  renderStats();
-});
-
-document.getElementById("stats-expense").addEventListener("click", () => {
-  statsType = "expense";
-  renderStats();
-});
-
-document.getElementById("stats-apply").addEventListener("click", () => {
-  renderStats();
-});
-
-document.querySelectorAll("[data-period]").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const period = btn.dataset.period;
-    renderStats(period);
-  });
-});
-
 async function renderStats(period = null) {
   if (!ensureTelegram()) return;
   const start = document.getElementById("stats-start").value;
@@ -578,7 +551,9 @@ async function renderStats(period = null) {
         t_type: statsType,
         period,
       });
-      result.textContent = `Всего: ${formatMoney(summary.total)} · Записей: ${summary.count}`;
+      result.textContent = `Всего: ${formatMoney(
+        summary.total
+      )} · Записей: ${summary.count}`;
       const catData = await apiPost("/api/categories/summary", {
         initData: tg.initData,
         t_type: statsType,
@@ -596,7 +571,9 @@ async function renderStats(period = null) {
       start: startIso,
       end: endIso,
     });
-    result.textContent = `Всего: ${formatMoney(summary.total)} · Записей: ${summary.count}`;
+    result.textContent = `Всего: ${formatMoney(
+      summary.total
+    )} · Записей: ${summary.count}`;
     const data = await apiPost("/api/categories/summary", {
       initData: tg.initData,
       t_type: statsType,
@@ -648,32 +625,6 @@ function drawStatsChart(data, canvas) {
   if (statsChart) statsChart.destroy();
   statsChart = new Chart(canvas, config);
 }
-    const labels = data.items.map((item) => item.category);
-    const values = data.items.map((item) => item.total);
-    const colors = labels.map((_, idx) => {
-      const hue = (idx * 47) % 360;
-      return `hsl(${hue}, 55%, 60%)`;
-    });
-    const chartData = {
-      labels,
-      datasets: [
-        {
-          data: values,
-          backgroundColor: colors,
-        },
-      ],
-    };
-    const config = { type: "pie", data: chartData };
-    if (tType === "income" && incomeChart) incomeChart.destroy();
-    if (tType === "expense" && expenseChart) expenseChart.destroy();
-    const chart = new Chart(canvas, config);
-    if (tType === "income") incomeChart = chart;
-    if (tType === "expense") expenseChart = chart;
-  } catch (err) {
-    const out =
-      tType === "income"
-        ? document.getElementById("income-result")
-        : document.getElementById("expense-result");
-    out.textContent = err.message;
-  }
-}
+
+showPanel("home");
+init();

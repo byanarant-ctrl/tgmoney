@@ -1,122 +1,231 @@
 import os
-import sqlite3
-from datetime import datetime, timedelta
 import secrets
+import sqlite3
 import string
+from datetime import datetime, timedelta
 
+try:
+    import psycopg
+except ImportError:  # pragma: no cover - handled by runtime requirements
+    psycopg = None
+
+DB_URL = os.getenv("DATABASE_URL", "").strip()
 DB_PATH = os.getenv("DB_PATH", "bot.db")
+DB_KIND = "postgres" if DB_URL else "sqlite"
 
 
-def _connect() -> sqlite3.Connection:
+def _connect():
+    if DB_KIND == "postgres":
+        if psycopg is None:
+            raise RuntimeError("psycopg is required for PostgreSQL")
+        return psycopg.connect(DB_URL)
     return sqlite3.connect(DB_PATH)
+
+
+def _execute(conn, query: str, params: tuple | list = ()):
+    if DB_KIND == "postgres":
+        cur = conn.cursor()
+        cur.execute(query.replace("?", "%s"), params)
+        return cur
+    return conn.execute(query, params)
 
 
 def init_db() -> None:
     with _connect() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS budgets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                owner_id INTEGER,
-                created_at TEXT NOT NULL
+        if DB_KIND == "postgres":
+            _execute(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS budgets (
+                    id SERIAL PRIMARY KEY,
+                    owner_id BIGINT,
+                    created_at TEXT NOT NULL
+                )
+                """,
             )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                telegram_id INTEGER PRIMARY KEY,
-                budget_id INTEGER NOT NULL,
-                display_name TEXT,
-                personal_budget_id INTEGER,
-                shared_budget_id INTEGER,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY(budget_id) REFERENCES budgets(id)
+            _execute(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    telegram_id BIGINT PRIMARY KEY,
+                    budget_id INTEGER NOT NULL,
+                    display_name TEXT,
+                    personal_budget_id INTEGER,
+                    shared_budget_id INTEGER,
+                    created_at TEXT NOT NULL
+                )
+                """,
             )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                budget_id INTEGER NOT NULL,
-                t_type TEXT NOT NULL,
-                amount REAL NOT NULL,
-                description TEXT NOT NULL,
-                added_by TEXT,
-                category TEXT,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY(budget_id) REFERENCES budgets(id)
+            _execute(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS transactions (
+                    id SERIAL PRIMARY KEY,
+                    budget_id INTEGER NOT NULL,
+                    t_type TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    description TEXT NOT NULL,
+                    added_by TEXT,
+                    category TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """,
             )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS categories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                budget_id INTEGER NOT NULL,
-                t_type TEXT NOT NULL,
-                name TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                UNIQUE(budget_id, t_type, name),
-                FOREIGN KEY(budget_id) REFERENCES budgets(id)
+            _execute(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS categories (
+                    id SERIAL PRIMARY KEY,
+                    budget_id INTEGER NOT NULL,
+                    t_type TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(budget_id, t_type, name)
+                )
+                """,
             )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS plans (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                budget_id INTEGER NOT NULL,
-                title TEXT NOT NULL,
-                description TEXT NOT NULL,
-                target_amount REAL NOT NULL,
-                current_amount REAL NOT NULL,
-                created_by TEXT,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY(budget_id) REFERENCES budgets(id)
+            _execute(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS plans (
+                    id SERIAL PRIMARY KEY,
+                    budget_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    target_amount REAL NOT NULL,
+                    current_amount REAL NOT NULL,
+                    created_by TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """,
             )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS invites (
-                code TEXT PRIMARY KEY,
-                budget_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
-                used_by INTEGER,
-                used_at TEXT,
-                FOREIGN KEY(budget_id) REFERENCES budgets(id)
+            _execute(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS invites (
+                    code TEXT PRIMARY KEY,
+                    budget_id INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    used_by BIGINT,
+                    used_at TEXT
+                )
+                """,
             )
-            """
-        )
-        cols = {row[1] for row in conn.execute("PRAGMA table_info(budgets)")}
-        if "owner_id" not in cols:
-            conn.execute("ALTER TABLE budgets ADD COLUMN owner_id INTEGER")
-        user_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
-        if "display_name" not in user_cols:
-            conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
-        if "personal_budget_id" not in user_cols:
-            conn.execute("ALTER TABLE users ADD COLUMN personal_budget_id INTEGER")
-        if "shared_budget_id" not in user_cols:
-            conn.execute("ALTER TABLE users ADD COLUMN shared_budget_id INTEGER")
-        tx_cols = {row[1] for row in conn.execute("PRAGMA table_info(transactions)")}
-        if "added_by" not in tx_cols:
-            conn.execute("ALTER TABLE transactions ADD COLUMN added_by TEXT")
-        if "category" not in tx_cols:
-            conn.execute("ALTER TABLE transactions ADD COLUMN category TEXT")
-        plan_cols = {row[1] for row in conn.execute("PRAGMA table_info(plans)")}
-        if "current_amount" not in plan_cols:
-            conn.execute("ALTER TABLE plans ADD COLUMN current_amount REAL NOT NULL DEFAULT 0")
+        else:
+            _execute(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS budgets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    owner_id INTEGER,
+                    created_at TEXT NOT NULL
+                )
+                """,
+            )
+            _execute(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    telegram_id INTEGER PRIMARY KEY,
+                    budget_id INTEGER NOT NULL,
+                    display_name TEXT,
+                    personal_budget_id INTEGER,
+                    shared_budget_id INTEGER,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(budget_id) REFERENCES budgets(id)
+                )
+                """,
+            )
+            _execute(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    budget_id INTEGER NOT NULL,
+                    t_type TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    description TEXT NOT NULL,
+                    added_by TEXT,
+                    category TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(budget_id) REFERENCES budgets(id)
+                )
+                """,
+            )
+            _execute(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS categories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    budget_id INTEGER NOT NULL,
+                    t_type TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(budget_id, t_type, name),
+                    FOREIGN KEY(budget_id) REFERENCES budgets(id)
+                )
+                """,
+            )
+            _execute(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS plans (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    budget_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    target_amount REAL NOT NULL,
+                    current_amount REAL NOT NULL,
+                    created_by TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(budget_id) REFERENCES budgets(id)
+                )
+                """,
+            )
+            _execute(
+                conn,
+                """
+                CREATE TABLE IF NOT EXISTS invites (
+                    code TEXT PRIMARY KEY,
+                    budget_id INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    used_by INTEGER,
+                    used_at TEXT,
+                    FOREIGN KEY(budget_id) REFERENCES budgets(id)
+                )
+                """,
+            )
+            cols = {row[1] for row in _execute(conn, "PRAGMA table_info(budgets)")}
+            if "owner_id" not in cols:
+                _execute(conn, "ALTER TABLE budgets ADD COLUMN owner_id INTEGER")
+            user_cols = {row[1] for row in _execute(conn, "PRAGMA table_info(users)")}
+            if "display_name" not in user_cols:
+                _execute(conn, "ALTER TABLE users ADD COLUMN display_name TEXT")
+            if "personal_budget_id" not in user_cols:
+                _execute(conn, "ALTER TABLE users ADD COLUMN personal_budget_id INTEGER")
+            if "shared_budget_id" not in user_cols:
+                _execute(conn, "ALTER TABLE users ADD COLUMN shared_budget_id INTEGER")
+            tx_cols = {row[1] for row in _execute(conn, "PRAGMA table_info(transactions)")}
+            if "added_by" not in tx_cols:
+                _execute(conn, "ALTER TABLE transactions ADD COLUMN added_by TEXT")
+            if "category" not in tx_cols:
+                _execute(conn, "ALTER TABLE transactions ADD COLUMN category TEXT")
+            plan_cols = {row[1] for row in _execute(conn, "PRAGMA table_info(plans)")}
+            if "current_amount" not in plan_cols:
+                _execute(
+                    conn,
+                    "ALTER TABLE plans ADD COLUMN current_amount REAL NOT NULL DEFAULT 0",
+                )
 
-        conn.execute(
+        _execute(
+            conn,
             """
             UPDATE budgets
             SET owner_id = (
                 SELECT telegram_id FROM users WHERE users.budget_id = budgets.id LIMIT 1
             )
             WHERE owner_id IS NULL
-            """
+            """,
         )
 
 
@@ -124,8 +233,16 @@ def _now() -> str:
     return datetime.utcnow().isoformat(timespec="seconds")
 
 
-def _create_budget(conn: sqlite3.Connection, owner_id: int) -> int:
-    cur = conn.execute(
+def _create_budget(conn, owner_id: int) -> int:
+    if DB_KIND == "postgres":
+        cur = _execute(
+            conn,
+            "INSERT INTO budgets (owner_id, created_at) VALUES (?, ?) RETURNING id",
+            (owner_id, _now()),
+        )
+        return int(cur.fetchone()[0])
+    cur = _execute(
+        conn,
         "INSERT INTO budgets (owner_id, created_at) VALUES (?, ?)",
         (owner_id, _now()),
     )
@@ -134,26 +251,30 @@ def _create_budget(conn: sqlite3.Connection, owner_id: int) -> int:
 
 def get_or_create_user(telegram_id: int, display_name: str | None = None) -> None:
     with _connect() as conn:
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             "SELECT budget_id, personal_budget_id FROM users WHERE telegram_id = ?",
             (telegram_id,),
         )
         row = cur.fetchone()
         if row:
             if display_name:
-                conn.execute(
+                _execute(
+                    conn,
                     "UPDATE users SET display_name = ? WHERE telegram_id = ?",
                     (display_name, telegram_id),
                 )
             budget_id, personal_budget_id = row
             if personal_budget_id is None:
-                conn.execute(
+                _execute(
+                    conn,
                     "UPDATE users SET personal_budget_id = ? WHERE telegram_id = ?",
                     (budget_id, telegram_id),
                 )
             return
         budget_id = _create_budget(conn, telegram_id)
-        conn.execute(
+        _execute(
+            conn,
             """
             INSERT INTO users (
                 telegram_id, budget_id, display_name, personal_budget_id, created_at
@@ -164,10 +285,8 @@ def get_or_create_user(telegram_id: int, display_name: str | None = None) -> Non
         )
 
 
-def _get_budget_id(conn: sqlite3.Connection, telegram_id: int) -> int:
-    cur = conn.execute(
-        "SELECT budget_id FROM users WHERE telegram_id = ?", (telegram_id,)
-    )
+def _get_budget_id(conn, telegram_id: int) -> int:
+    cur = _execute(conn, "SELECT budget_id FROM users WHERE telegram_id = ?", (telegram_id,))
     row = cur.fetchone()
     if not row:
         raise RuntimeError("User not found")
@@ -177,7 +296,8 @@ def _get_budget_id(conn: sqlite3.Connection, telegram_id: int) -> int:
 def get_budget_summary(telegram_id: int) -> float:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             """
             SELECT COALESCE(
                 SUM(CASE WHEN t_type = 'income' THEN amount ELSE -amount END),
@@ -201,7 +321,8 @@ def add_transaction(
 ) -> None:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
-        conn.execute(
+        _execute(
+            conn,
             """
             INSERT INTO transactions (
                 budget_id, t_type, amount, description, added_by, category, created_at
@@ -218,7 +339,8 @@ def get_period_summary(
     start = (datetime.utcnow() - timedelta(days=days)).isoformat(timespec="seconds")
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             """
             SELECT COALESCE(SUM(amount), 0), COUNT(*)
             FROM transactions
@@ -235,7 +357,8 @@ def get_recent_transactions(
 ) -> list[tuple[int, float, str, str, str, str]]:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             """
             SELECT id, amount, description, COALESCE(added_by, ''), COALESCE(category, ''), created_at
             FROM transactions
@@ -271,7 +394,7 @@ def list_transactions(
             params.append(end)
         query += " ORDER BY id DESC LIMIT ?"
         params.append(limit)
-        cur = conn.execute(query, tuple(params))
+        cur = _execute(conn, query, tuple(params))
         return list(cur.fetchall())
 
 
@@ -291,7 +414,7 @@ def list_updates(
             params.append(since)
         query += " ORDER BY id ASC LIMIT ?"
         params.append(limit)
-        cur = conn.execute(query, tuple(params))
+        cur = _execute(conn, query, tuple(params))
         return list(cur.fetchall())
 
 
@@ -304,7 +427,8 @@ def update_transaction(
 ) -> bool:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             """
             UPDATE transactions
             SET amount = ?, description = ?, category = ?
@@ -318,7 +442,8 @@ def update_transaction(
 def list_categories(telegram_id: int, t_type: str) -> list[str]:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             """
             SELECT DISTINCT category
             FROM transactions
@@ -348,14 +473,15 @@ def category_summary(
             query += " AND created_at <= ?"
             params.append(end)
         query += " GROUP BY cat ORDER BY SUM(amount) DESC"
-        cur = conn.execute(query, tuple(params))
+        cur = _execute(conn, query, tuple(params))
         return [(row[0] or "Без категории", float(row[1] or 0)) for row in cur.fetchall()]
 
 
 def list_categories_full(telegram_id: int, t_type: str) -> list[tuple[int, str]]:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             """
             SELECT id, name
             FROM categories
@@ -370,8 +496,20 @@ def list_categories_full(telegram_id: int, t_type: str) -> list[tuple[int, str]]
 def ensure_category(telegram_id: int, t_type: str, name: str) -> None:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
+        if DB_KIND == "postgres":
+            _execute(
+                conn,
+                """
+                INSERT INTO categories (budget_id, t_type, name, created_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (budget_id, t_type, name) DO NOTHING
+                """,
+                (budget_id, t_type, name, _now()),
+            )
+            return
         try:
-            conn.execute(
+            _execute(
+                conn,
                 """
                 INSERT INTO categories (budget_id, t_type, name, created_at)
                 VALUES (?, ?, ?, ?)
@@ -389,7 +527,8 @@ def add_category(telegram_id: int, t_type: str, name: str) -> None:
 def update_category(telegram_id: int, category_id: int, name: str) -> bool:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             """
             UPDATE categories
             SET name = ?
@@ -403,7 +542,8 @@ def update_category(telegram_id: int, category_id: int, name: str) -> bool:
 def delete_category(telegram_id: int, category_id: int) -> bool:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             "DELETE FROM categories WHERE id = ? AND budget_id = ?",
             (category_id, budget_id),
         )
@@ -418,7 +558,8 @@ def _generate_code(length: int = 8) -> str:
 def create_invite(telegram_id: int) -> str:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
-        conn.execute(
+        _execute(
+            conn,
             """
             UPDATE users
             SET shared_budget_id = ?
@@ -428,20 +569,34 @@ def create_invite(telegram_id: int) -> str:
         )
         while True:
             code = _generate_code()
-            try:
-                conn.execute(
-                    "INSERT INTO invites (code, budget_id, created_at) VALUES (?, ?, ?)",
+            if DB_KIND == "postgres":
+                cur = _execute(
+                    conn,
+                    """
+                    INSERT INTO invites (code, budget_id, created_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT (code) DO NOTHING
+                    """,
                     (code, budget_id, _now()),
                 )
-                return code
-            except sqlite3.IntegrityError:
-                continue
+                if cur.rowcount > 0:
+                    return code
+            else:
+                try:
+                    _execute(
+                        conn,
+                        "INSERT INTO invites (code, budget_id, created_at) VALUES (?, ?, ?)",
+                        (code, budget_id, _now()),
+                    )
+                    return code
+                except sqlite3.IntegrityError:
+                    continue
 
 
 def use_invite(telegram_id: int, code: str) -> bool:
     with _connect() as conn:
-        cur = conn.execute(
-            "SELECT budget_id, used_by FROM invites WHERE code = ?", (code,)
+        cur = _execute(
+            conn, "SELECT budget_id, used_by FROM invites WHERE code = ?", (code,)
         )
         row = cur.fetchone()
         if not row:
@@ -449,15 +604,18 @@ def use_invite(telegram_id: int, code: str) -> bool:
         budget_id, used_by = row
         if used_by is not None:
             return False
-        conn.execute(
+        _execute(
+            conn,
             "UPDATE users SET budget_id = ?, shared_budget_id = ? WHERE telegram_id = ?",
             (budget_id, budget_id, telegram_id),
         )
-        conn.execute(
+        _execute(
+            conn,
             "UPDATE invites SET used_by = ?, used_at = ? WHERE code = ?",
             (telegram_id, _now(), code),
         )
-        conn.execute(
+        _execute(
+            conn,
             "UPDATE users SET shared_budget_id = ? WHERE budget_id = ?",
             (budget_id, budget_id),
         )
@@ -466,9 +624,8 @@ def use_invite(telegram_id: int, code: str) -> bool:
 
 def leave_budget(telegram_id: int) -> None:
     with _connect() as conn:
-        cur = conn.execute(
-            "SELECT personal_budget_id FROM users WHERE telegram_id = ?",
-            (telegram_id,),
+        cur = _execute(
+            conn, "SELECT personal_budget_id FROM users WHERE telegram_id = ?", (telegram_id,)
         )
         row = cur.fetchone()
         if not row:
@@ -476,7 +633,8 @@ def leave_budget(telegram_id: int) -> None:
         personal_budget_id = row[0]
         if personal_budget_id is None:
             personal_budget_id = _create_budget(conn, telegram_id)
-        conn.execute(
+        _execute(
+            conn,
             """
             UPDATE users
             SET budget_id = ?, personal_budget_id = ?, shared_budget_id = NULL
@@ -486,10 +644,8 @@ def leave_budget(telegram_id: int) -> None:
         )
 
 
-def _get_budget_owner(conn: sqlite3.Connection, budget_id: int) -> int | None:
-    cur = conn.execute(
-        "SELECT owner_id FROM budgets WHERE id = ?", (budget_id,)
-    )
+def _get_budget_owner(conn, budget_id: int) -> int | None:
+    cur = _execute(conn, "SELECT owner_id FROM budgets WHERE id = ?", (budget_id,))
     row = cur.fetchone()
     if not row:
         return None
@@ -501,7 +657,8 @@ def add_plan(
 ) -> None:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
-        conn.execute(
+        _execute(
+            conn,
             """
             INSERT INTO plans (
                 budget_id,
@@ -523,7 +680,8 @@ def list_plans(
 ) -> list[tuple[int, str, str, float, float, str, str]]:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             """
             SELECT
                 id,
@@ -547,7 +705,8 @@ def get_plan(
 ) -> tuple[int, str, str, float, float, str, str] | None:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             """
             SELECT
                 id,
@@ -570,7 +729,8 @@ def update_plan(
 ) -> bool:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             """
             UPDATE plans
             SET title = ?, description = ?, target_amount = ?
@@ -584,7 +744,8 @@ def update_plan(
 def deposit_plan(telegram_id: int, plan_id: int, amount: float) -> bool:
     with _connect() as conn:
         budget_id = _get_budget_id(conn, telegram_id)
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             """
             UPDATE plans
             SET current_amount = current_amount + ?
@@ -597,7 +758,8 @@ def deposit_plan(telegram_id: int, plan_id: int, amount: float) -> bool:
 
 def get_budget_users(telegram_id: int, use_shared: bool) -> list[tuple[int, str]]:
     with _connect() as conn:
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             "SELECT personal_budget_id, shared_budget_id FROM users WHERE telegram_id = ?",
             (telegram_id,),
         )
@@ -609,7 +771,8 @@ def get_budget_users(telegram_id: int, use_shared: bool) -> list[tuple[int, str]
         if budget_id is None:
             return []
         if use_shared:
-            cur = conn.execute(
+            cur = _execute(
+                conn,
                 """
                 SELECT telegram_id, COALESCE(display_name, '')
                 FROM users
@@ -619,7 +782,8 @@ def get_budget_users(telegram_id: int, use_shared: bool) -> list[tuple[int, str]
                 (budget_id,),
             )
             return list(cur.fetchall())
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             """
             SELECT telegram_id, COALESCE(display_name, '')
             FROM users
@@ -633,7 +797,8 @@ def get_budget_users(telegram_id: int, use_shared: bool) -> list[tuple[int, str]
 
 def get_budget_state(telegram_id: int) -> tuple[int | None, int | None, int | None]:
     with _connect() as conn:
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             """
             SELECT budget_id, personal_budget_id, shared_budget_id
             FROM users
@@ -649,7 +814,8 @@ def get_budget_state(telegram_id: int) -> tuple[int | None, int | None, int | No
 
 def switch_budget(telegram_id: int, mode: str) -> bool:
     with _connect() as conn:
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             """
             SELECT personal_budget_id, shared_budget_id
             FROM users
@@ -666,7 +832,8 @@ def switch_budget(telegram_id: int, mode: str) -> bool:
                 personal_budget_id = _create_budget(conn, telegram_id)
             if shared_budget_id and personal_budget_id == shared_budget_id:
                 personal_budget_id = _create_budget(conn, telegram_id)
-            conn.execute(
+            _execute(
+                conn,
                 "UPDATE users SET budget_id = ?, personal_budget_id = ? WHERE telegram_id = ?",
                 (personal_budget_id, personal_budget_id, telegram_id),
             )
@@ -674,7 +841,8 @@ def switch_budget(telegram_id: int, mode: str) -> bool:
         if mode == "shared":
             if shared_budget_id is None:
                 return False
-            conn.execute(
+            _execute(
+                conn,
                 "UPDATE users SET budget_id = ? WHERE telegram_id = ?",
                 (shared_budget_id, telegram_id),
             )
@@ -699,7 +867,8 @@ def remove_user_from_budget(owner_id: int, target_telegram_id: int) -> bool:
             return False
         if target_telegram_id == owner_id:
             return False
-        cur = conn.execute(
+        cur = _execute(
+            conn,
             "SELECT personal_budget_id FROM users WHERE telegram_id = ?",
             (target_telegram_id,),
         )
@@ -707,7 +876,8 @@ def remove_user_from_budget(owner_id: int, target_telegram_id: int) -> bool:
         personal_budget_id = row[0] if row else None
         if personal_budget_id is None:
             personal_budget_id = _create_budget(conn, target_telegram_id)
-        conn.execute(
+        _execute(
+            conn,
             """
             UPDATE users
             SET budget_id = ?, personal_budget_id = ?, shared_budget_id = NULL

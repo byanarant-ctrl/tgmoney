@@ -214,6 +214,7 @@ document.getElementById("join-submit").addEventListener("click", async () => {
     out.textContent = "Бюджет объединен.";
     document.getElementById("join-code").value = "";
     await loadUsers();
+    startUpdatePolling();
   } catch (err) {
     out.textContent = err.message;
   }
@@ -227,6 +228,7 @@ document.getElementById("leave-budget").addEventListener("click", async () => {
     balanceEl.textContent = formatMoney(data.balance);
     out.textContent = "Вы вышли из общего бюджета.";
     await loadUsers();
+    stopUpdatePolling();
   } catch (err) {
     out.textContent = err.message;
   }

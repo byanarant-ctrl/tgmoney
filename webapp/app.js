@@ -541,20 +541,27 @@ async function loadTransactions(tType) {
 async function loadUsers() {
   if (!ensureTelegram()) return;
   const list = document.getElementById("users-list");
+  const usersSection = document.getElementById("users-section");
+  const leaveSection = document.getElementById("leave-budget-section");
   list.innerHTML = "";
   try {
     const data = await apiPost("/api/users", { initData: tg.initData });
     currentMode = data.mode;
     const switchButton = document.getElementById("switch-budget");
     if (!data.has_shared) {
-      switchButton.textContent = "Нет общего бюджета";
+      switchButton.textContent = "Переключить бюджет";
       switchButton.disabled = true;
+      usersSection.classList.add("hidden");
+      leaveSection.classList.add("hidden");
+      return;
     } else {
       switchButton.disabled = false;
       switchButton.textContent =
         currentMode === "shared"
           ? "Переключить на личный"
           : "Переключить на общий";
+      usersSection.classList.remove("hidden");
+      leaveSection.classList.remove("hidden");
     }
     if (!data.users.length) {
       list.innerHTML = "<div class=\"result\">Пока никого нет.</div>";
